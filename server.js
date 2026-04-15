@@ -78,6 +78,13 @@ async function initDB() {
         notes TEXT
       )
     `);
+    // Business tracker: store monthly data as JSON keyed by YYYY-MM
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS business_months (
+        key TEXT PRIMARY KEY,
+        data JSONB NOT NULL
+      )
+    `);
     console.log('Database tables ready');
   } finally {
     client.release();
@@ -243,6 +250,34 @@ app.get('/api/export', authMiddleware, async (req, res) => {
   } catch (err) {
     console.error('GET /api/export error:', err);
     res.status(500).json({ error: 'Export failed' });
+  }
+});
+
+// ── Business Tracker routes ──
+app.get('/api/business/data', authMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT key, data FROM business_months ORDER BY key');
+    const months = {};
+    result.rows.forEach(r => { months[r.key] = r.data; });
+    res.json({ months });
+  } catch (err) {
+    console.error('GET /api/business/data error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.post('/api/business/months', authMiddleware, async (req, res) => {
+  const { key, data } = req.body;
+  if (!key || !data) return res.status(400).json({ error: 'key and data required' });
+  try {
+    await pool.query(
+      'INSERT INTO business_months (key, data) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET data = $2',
+      [key, JSON.stringify(data)]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('POST /api/business/months error:', err);
+    res.status(500).json({ error: 'Database error' });
   }
 });
 
