@@ -576,11 +576,12 @@ function updateTfLabel(){
   const labels={'1w':'past 7 days','mtd':'month to date','1m':'past month','3m':'past 3 months','6m':'past 6 months','1y':'past year'};
   el.textContent='Showing '+labels[globalTf];
 }
+function localDateStr(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
 function inTf(dateStr){
   if(globalTf==='all'||!dateStr)return true;
-  const d=new Date(dateStr);
-  if(tfFromDate&&d<tfFromDate)return false;
-  if(tfToDate&&d>tfToDate)return false;
+  const ds=dateStr.slice(0,10);
+  if(tfFromDate&&ds<localDateStr(tfFromDate))return false;
+  if(tfToDate&&ds>localDateStr(tfToDate))return false;
   return true;
 }
 function filteredPayouts(){return D.payouts.filter(p=>inTf(p.date))}
