@@ -85,6 +85,37 @@ async function initDB() {
         data JSONB NOT NULL
       )
     `);
+    // Seed March 2026 data if business_months is empty
+    const count = await client.query('SELECT COUNT(*) FROM business_months');
+    if (parseInt(count.rows[0].count) === 0) {
+      await client.query(
+        "INSERT INTO business_months (key, data) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+        ['2026-03', JSON.stringify({
+          rev: [41069, 2029.28, 0, 11686],
+          team: [
+            {name:'Jesus',role:'Closer',amount:2085},
+            {name:'Zain',role:'Closer',amount:1237},
+            {name:'Keshawn',role:'Setter',amount:4482.75},
+            {name:'Shayan',role:'COO',amount:2074},
+            {name:'Bryce and Demon',role:'Role',amount:500}
+          ],
+          soft: [
+            {name:'YouTube tools',amount:39},
+            {name:'CRM / sales',amount:100},
+            {name:'Claude / AI',amount:192.57},
+            {name:'Notion',amount:12.79},
+            {name:'Sim2Funded',amount:29},
+            {name:'Typeform',amount:137.51},
+            {name:'Kit',amount:94.7},
+            {name:'manychat',amount:101.27},
+            {name:'Sendblue',amount:772},
+            {name:'Quickbooks',amount:100}
+          ]
+        })]
+      );
+      console.log('Seeded March 2026 business data');
+    }
+
     console.log('Database tables ready');
   } finally {
     client.release();
