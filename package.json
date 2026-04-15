@@ -1,0 +1,13 @@
+{
+  "name": "funded-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "pg": "^8.13.0",
+    "cookie-parser": "^1.4.7"
+  }
+}

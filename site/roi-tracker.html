@@ -332,11 +332,37 @@ body{font-family:var(--sans);background:var(--bg);color:var(--t);min-height:100v
 .tf-date{width:140px !important;padding:6px 10px !important;font-size:12px !important}
 .tf-label{margin-left:auto;font-size:11px;color:var(--t3);font-family:var(--sans)}
 
+/* ═══════════ LOGIN SCREEN ═══════════ */
+.login-ov{position:fixed;inset:0;z-index:300;background:var(--bg);display:flex;align-items:center;justify-content:center}
+.login-ov.hidden{display:none}
+.login-box{background:var(--glass-bg);backdrop-filter:blur(24px);border:1px solid var(--glass-brd);border-radius:var(--rad);padding:36px 32px;width:90%;max-width:380px;text-align:center;position:relative;animation:modalIn .4s ease;box-shadow:0 24px 64px rgba(0,0,0,.5)}
+.login-box::before{content:'';position:absolute;top:0;left:20%;right:20%;height:1px;background:linear-gradient(90deg,transparent,var(--g),transparent);opacity:.5}
+.login-box h2{font-size:20px;font-weight:700;margin-bottom:4px}
+.login-box p{font-size:12px;color:var(--t3);margin-bottom:20px}
+.login-box input{width:100%;padding:12px 14px;background:rgba(8,8,12,0.6);border:1px solid var(--brd);border-radius:var(--rad2);color:var(--t);font-family:var(--sans);font-size:14px;text-align:center;outline:none;transition:all .25s;letter-spacing:2px}
+.login-box input:focus{border-color:var(--g);box-shadow:0 0 0 3px rgba(0,230,118,0.08)}
+.login-box button{width:100%;padding:12px;border:none;border-radius:var(--rad2);background:var(--g);color:#000;font-weight:700;font-size:14px;cursor:pointer;margin-top:12px;transition:all .2s}
+.login-box button:hover{background:#00c864;transform:translateY(-1px);box-shadow:0 4px 16px rgba(0,230,118,0.3)}
+.login-error{color:var(--r);font-size:12px;margin-top:10px;min-height:18px}
+.login-spinner{display:inline-block;width:16px;height:16px;border:2px solid rgba(0,230,118,0.3);border-top-color:var(--g);border-radius:50%;animation:spin .6s linear infinite;margin:0 auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+
 /* ═══════════ 21st.dev: FOCUS RING ═══════════ */
 :focus-visible{outline:2px solid var(--g);outline-offset:2px;border-radius:4px}
 </style>
 </head>
 <body>
+
+<!-- Login screen -->
+<div class="login-ov" id="loginScreen">
+  <div class="login-box">
+    <h2>Funded Tracker</h2>
+    <p>Enter your password to access your data</p>
+    <input type="password" id="loginPw" placeholder="Password" onkeydown="if(event.key==='Enter')doLogin()">
+    <button onclick="doLogin()">Unlock</button>
+    <div class="login-error" id="loginErr"></div>
+  </div>
+</div>
 
 <!-- 21st.dev: Animated gradient mesh background -->
 <div class="gradient-mesh">
@@ -430,7 +456,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--t);min-height:100v
 </div></div>
 
 <script>
-const KEY='soa_roi_tracker_v2',FIRMS=['TPT','TopStep','MyFundedFutures','Tradify','Apex','Other'];
+const FIRMS=['TPT','TopStep','MyFundedFutures','Tradify','Apex','Other'];
 const FF={TPT:'Take Profit Trader',TopStep:'TopStep',MyFundedFutures:'My Funded Futures',Tradify:'Tradify',Apex:'Apex',Other:'Other'};
 const ET={eval:'Eval Fee',activation:'Activation',reset:'Reset',data:'Data/Platform',other:'Other'};
 const SL={eval:'Evaluation',passed:'Passed',funded:'Funded',blown:'Blown'};
@@ -460,7 +486,6 @@ function animateValue(el,end,duration=800){
   const prefix=isNeg?'-$':'$';
   function step(now){
     const elapsed=Math.min((now-startTime)/duration,1);
-    // Ease out cubic
     const eased=1-Math.pow(1-elapsed,3);
     const current=Math.round(eased*absEnd);
     const formatted=current>=1000?current.toLocaleString('en-US'):current.toString();
@@ -471,31 +496,47 @@ function animateValue(el,end,duration=800){
   requestAnimationFrame(step);
 }
 
-/* ═══════════ DATA LAYER ═══════════ */
-function load(){
-  try{
-    let r=JSON.parse(localStorage.getItem(KEY));
-    if(r&&(r.payouts||r.expenses||r.accounts))return{payouts:r.payouts||[],expenses:r.expenses||[],accounts:r.accounts||[]};
-  }catch{}
-  const oldKeys=['soa_roi_tracker','soa_funded_tracker'];
-  for(const ok of oldKeys){
-    try{
-      const old=JSON.parse(localStorage.getItem(ok));
-      if(old){
-        const migrated={payouts:[],expenses:[],accounts:[]};
-        if(old.payouts)old.payouts.forEach(p=>{migrated.payouts.push({id:p.id||uid(),amount:p.amount||p.net||p.gross||0,date:p.date||'',firm:p.firm||p.accountId||'Other',account:p.account||'',notes:p.notes||''})});
-        if(old.expenses)old.expenses.forEach(e=>{migrated.expenses.push({id:e.id||uid(),amount:e.amount||0,date:e.date||'',type:e.type||'eval',firm:e.firm||'Other',notes:e.notes||''})});
-        if(old.accounts)old.accounts.forEach(a=>{migrated.accounts.push({id:a.id||uid(),name:a.name||'Unnamed',firm:a.firm||'Other',size:a.size||50000,status:a.status||'eval',startDate:a.startDate||a.date||'',notes:a.notes||''})});
-        if(old.historicalMonths)old.historicalMonths.forEach(h=>{if(h.expenses>0)migrated.expenses.push({id:uid(),amount:h.expenses,date:h.month+'-01',type:'eval',firm:'Other',notes:'Migrated from '+h.month});if(h.payouts>0)migrated.payouts.push({id:uid(),amount:h.payouts,date:h.month+'-01',firm:'Other',account:'Historical',notes:'Migrated from '+h.month})});
-        if(migrated.payouts.length||migrated.expenses.length||migrated.accounts.length){sv(migrated);return migrated}
-      }
-    }catch{}
-  }
-  return{payouts:[],expenses:[],accounts:[]};
+/* ═══════════ API HELPERS ═══════════ */
+async function api(method,path,body){
+  const opts={method,headers:{'Content-Type':'application/json'},credentials:'same-origin'};
+  if(body)opts.body=JSON.stringify(body);
+  const res=await fetch(path,opts);
+  if(res.status===401){showLogin();throw new Error('Unauthorized')}
+  if(!res.ok)throw new Error(await res.text());
+  return res.json();
 }
-function sv(d){localStorage.setItem(KEY,JSON.stringify(d))}
-let D=load(),chartRange='all',bdTab='firm';
+
+/* ═══════════ LOGIN ═══════════ */
+function showLogin(){document.getElementById('loginScreen').classList.remove('hidden');document.getElementById('loginPw').focus()}
+function hideLogin(){document.getElementById('loginScreen').classList.add('hidden')}
+async function doLogin(){
+  const pw=document.getElementById('loginPw').value;
+  const err=document.getElementById('loginErr');
+  if(!pw){err.textContent='Enter a password';return}
+  err.innerHTML='<div class="login-spinner"></div>';
+  try{
+    await api('POST','/api/login',{password:pw});
+    err.textContent='';
+    hideLogin();
+    await loadAndRender();
+  }catch(e){
+    err.textContent='Wrong password';
+    document.getElementById('loginPw').value='';
+    document.getElementById('loginPw').focus();
+  }
+}
+
+/* ═══════════ CLOUD DATA LAYER ═══════════ */
+let D={payouts:[],expenses:[],accounts:[]},chartRange='all',bdTab='firm';
 let globalTf='all',tfFromDate=null,tfToDate=null;
+
+async function loadAndRender(){
+  try{
+    D=await api('GET','/api/data');
+    renderAll();
+  }catch(e){console.error('Load error:',e)}
+}
+function renderAll(){renderStats();renderChart();renderBreakdown();renderMonthly();renderAccounts();renderTx()}
 
 /* ═══════════ TIMEFRAME FILTER ═══════════ */
 function setTf(tf,btn){
@@ -513,14 +554,14 @@ function setTf(tf,btn){
   else if(tf==='6m'){tfFromDate=new Date(now);tfFromDate.setMonth(now.getMonth()-6)}
   else if(tf==='1y'){tfFromDate=new Date(now);tfFromDate.setFullYear(now.getFullYear()-1)}
   updateTfLabel();
-  render();
+  renderAll();
 }
 function applyCustomTf(){
   const f=document.getElementById('tfFrom').value,t=document.getElementById('tfTo').value;
   tfFromDate=f?new Date(f):null;
   tfToDate=t?new Date(t+'T23:59:59'):null;
   updateTfLabel();
-  render();
+  renderAll();
 }
 function updateTfLabel(){
   const el=document.getElementById('tfLabel');
@@ -543,44 +584,6 @@ function inTf(dateStr){
 function filteredPayouts(){return D.payouts.filter(p=>inTf(p.date))}
 function filteredExpenses(){return D.expenses.filter(e=>inTf(e.date))}
 
-// Migrate from old trackers
-(function migrateOld(){
-  if(D.payouts.length||D.expenses.length||D.accounts.length) return;
-  const oldKey='soa_roi_tracker';
-  try{
-    const raw=localStorage.getItem(oldKey);if(!raw) return;
-    const old=JSON.parse(raw);
-    if(old.payouts&&old.payouts.length){D.payouts=old.payouts}
-    if(old.expenses&&old.expenses.length){D.expenses=old.expenses}
-    if(old.accounts&&old.accounts.length){D.accounts=old.accounts}
-    if(D.payouts.length||D.expenses.length||D.accounts.length){sv(D)}
-  }catch(e){}
-})();
-(function migrateV0(){
-  if(D.payouts.length||D.expenses.length||D.accounts.length) return;
-  const oldKey='soa_funded_tracker';
-  try{
-    const raw=localStorage.getItem(oldKey);if(!raw) return;
-    const old=JSON.parse(raw);
-    if(old.accounts&&old.accounts.length){
-      D.accounts=old.accounts.map(a=>({id:a.id||uid(),name:a.name||'Unnamed',firm:a.firm||'TPT',size:a.size||50000,status:a.status||'eval',startDate:a.startDate||'',notes:a.notes||''}));
-    }
-    if(old.payouts&&old.payouts.length){
-      D.payouts=old.payouts.map(p=>({id:p.id||uid(),amount:p.net||p.gross||0,date:p.date||'',firm:(()=>{const acct=old.accounts?.find(a=>a.id===p.accountId);return acct?acct.firm:'TPT'})(),account:(()=>{const acct=old.accounts?.find(a=>a.id===p.accountId);return acct?acct.name:''})(),notes:p.notes||''}));
-    }
-    if(old.accounts&&old.accounts.length){
-      old.accounts.forEach(a=>{if(a.cost&&a.cost>0){D.expenses.push({id:uid(),amount:a.cost,date:a.startDate||'',type:'eval',firm:a.firm||'TPT',notes:a.name+' challenge fee'})}});
-    }
-    if(old.historicalMonths&&old.historicalMonths.length){
-      old.historicalMonths.forEach(h=>{
-        if(h.payouts>0){D.payouts.push({id:uid(),amount:h.payouts,date:h.month+'-15',firm:'TPT',account:'',notes:'Historical - '+h.month})}
-        if(h.expenses>0){D.expenses.push({id:uid(),amount:h.expenses,date:h.month+'-01',type:'eval',firm:'TPT',notes:'Historical expenses - '+h.month})}
-      });
-    }
-    if(D.payouts.length||D.expenses.length||D.accounts.length){sv(D)}
-  }catch(e){}
-})();
-
 function fillFirms(){['pFirm','eFirm','aFirm'].forEach(id=>{const s=document.getElementById(id);if(!s)return;s.innerHTML=FIRMS.map(f=>`<option value="${f}">${FF[f]}</option>`).join('')})}
 fillFirms();
 
@@ -590,17 +593,54 @@ function openM(t){document.getElementById('m-'+t).classList.add('on');const toda
 function closeM(t){document.getElementById('m-'+t).classList.remove('on')}
 document.querySelectorAll('.ov').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('on')}));
 
-function savePayout(){const a=Number(document.getElementById('pAmt').value);if(!a)return alert('Enter amount');D.payouts.push({id:uid(),amount:a,date:document.getElementById('pDate').value,firm:document.getElementById('pFirm').value,account:document.getElementById('pAcct').value,notes:document.getElementById('pNotes').value});sv(D);closeM('payout');render()}
-function saveExpense(){const a=Number(document.getElementById('eAmt').value);if(!a)return alert('Enter amount');D.expenses.push({id:uid(),amount:a,date:document.getElementById('eDate').value,type:document.getElementById('eType').value,firm:document.getElementById('eFirm').value,notes:document.getElementById('eNotes').value});sv(D);closeM('expense');render()}
-function saveAccount(){const eid=document.getElementById('aEditId').value;const ac={id:eid||uid(),name:document.getElementById('aName').value||'Unnamed',firm:document.getElementById('aFirm').value,size:Number(document.getElementById('aSize').value)||50000,status:document.getElementById('aStatus').value,startDate:document.getElementById('aDate').value,notes:document.getElementById('aNotes').value};if(eid){const i=D.accounts.findIndex(x=>x.id===eid);if(i>=0)D.accounts[i]=ac}else D.accounts.push(ac);sv(D);closeM('account');render()}
+/* ═══════════ CRUD → API ═══════════ */
+async function savePayout(){
+  const a=Number(document.getElementById('pAmt').value);if(!a)return alert('Enter amount');
+  const p={id:uid(),amount:a,date:document.getElementById('pDate').value,firm:document.getElementById('pFirm').value,account:document.getElementById('pAcct').value,notes:document.getElementById('pNotes').value};
+  try{await api('POST','/api/payouts',p);closeM('payout');await loadAndRender()}catch(e){alert('Save failed')}
+}
+async function saveExpense(){
+  const a=Number(document.getElementById('eAmt').value);if(!a)return alert('Enter amount');
+  const e={id:uid(),amount:a,date:document.getElementById('eDate').value,type:document.getElementById('eType').value,firm:document.getElementById('eFirm').value,notes:document.getElementById('eNotes').value};
+  try{await api('POST','/api/expenses',e);closeM('expense');await loadAndRender()}catch(err){alert('Save failed')}
+}
+async function saveAccount(){
+  const eid=document.getElementById('aEditId').value;
+  const ac={id:eid||uid(),name:document.getElementById('aName').value||'Unnamed',firm:document.getElementById('aFirm').value,size:Number(document.getElementById('aSize').value)||50000,status:document.getElementById('aStatus').value,startDate:document.getElementById('aDate').value,notes:document.getElementById('aNotes').value};
+  try{await api('POST','/api/accounts',ac);closeM('account');await loadAndRender()}catch(e){alert('Save failed')}
+}
 function editAcct(id){const a=D.accounts.find(x=>x.id===id);if(!a)return;openM('account');document.getElementById('aEditId').value=a.id;document.getElementById('aMdTitle').textContent='Edit Account';document.getElementById('aName').value=a.name;document.getElementById('aFirm').value=a.firm;document.getElementById('aSize').value=a.size;document.getElementById('aStatus').value=a.status;document.getElementById('aDate').value=a.startDate||'';document.getElementById('aNotes').value=a.notes||''}
-function del(t,id){if(!confirm('Delete?'))return;D[t]=D[t].filter(x=>x.id!==id);sv(D);render()}
+async function del(t,id){
+  if(!confirm('Delete?'))return;
+  try{await api('DELETE','/api/'+t+'/'+id);await loadAndRender()}catch(e){alert('Delete failed')}
+}
 
-function exportAll(){const b=new Blob([JSON.stringify(D,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='soa-roi-backup.json';a.click()}
-function importAll(){const i=document.createElement('input');i.type='file';i.accept='.json';i.onchange=e=>{const r=new FileReader();r.onload=ev=>{try{const d=JSON.parse(ev.target.result);if(confirm('Replace all data?')){D={payouts:d.payouts||[],expenses:d.expenses||[],accounts:d.accounts||[]};sv(D);render()}}catch{alert('Error')}};r.readAsText(e.target.files[0])};i.click()}
+async function exportAll(){
+  try{
+    const d=await api('GET','/api/export');
+    const b=new Blob([JSON.stringify(d,null,2)],{type:'application/json'}),a=document.createElement('a');
+    a.href=URL.createObjectURL(b);a.download='soa-roi-backup.json';a.click();
+  }catch(e){alert('Export failed')}
+}
+function importAll(){
+  const i=document.createElement('input');i.type='file';i.accept='.json';
+  i.onchange=async e=>{
+    const r=new FileReader();
+    r.onload=async ev=>{
+      try{
+        const d=JSON.parse(ev.target.result);
+        if(confirm('Replace all data with imported file?')){
+          await api('POST','/api/import',{payouts:d.payouts||[],expenses:d.expenses||[],accounts:d.accounts||[]});
+          await loadAndRender();
+        }
+      }catch{alert('Import failed')}
+    };
+    r.readAsText(e.target.files[0]);
+  };
+  i.click();
+}
 
 /* ═══════════ RENDER ═══════════ */
-function render(){D=load();renderStats();renderChart();renderBreakdown();renderMonthly();renderAccounts();renderTx()}
 
 function renderStats(){
   const fp=filteredPayouts(),fe=filteredExpenses();
@@ -750,7 +790,16 @@ function renderTx(){
   document.getElementById('txList').innerHTML=all.map((t,i)=>`<div class="ti" style="animation-delay:${i*35}ms;border-left:3px solid ${t._t==='payout'?'var(--g)':'var(--r)'}"><div><div style="font-weight:600">${t._t==='payout'?(t.account||t.firm):`${t.firm} — ${ET[t.type]||t.type}`}</div><div style="font-size:11px;color:var(--t3)">${t.notes||''}</div></div><div><div class="ti-lbl">Amount</div><div class="ti-val ${t._t==='payout'?'glow-green':'glow-red'}" style="color:${t._t==='payout'?'var(--g)':'var(--r)'}">${t._t==='payout'?'+':'-'}${fmt(t.amount)}</div></div><div><div class="ti-lbl">Date</div><div class="ti-val">${t.date||'—'}</div></div><div><div class="ti-lbl">Type</div><div class="ti-val">${t._t==='payout'?'Payout':'Expense'}</div></div><button class="btn btn-sm btn-r" onclick="del('${t._t==='payout'?'payouts':'expenses'}','${t.id}')">&#10005;</button></div>`).join('');
 }
 
-render();
+/* ═══════════ INIT: CHECK AUTH THEN LOAD ═══════════ */
+(async function init(){
+  try{
+    await api('GET','/api/check');
+    hideLogin();
+    await loadAndRender();
+  }catch(e){
+    showLogin();
+  }
+})();
 
 /* ═══════════ 21st.dev: KEYBOARD SHORTCUTS ═══════════ */
 document.addEventListener('keydown',e=>{
