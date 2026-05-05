@@ -201,12 +201,49 @@ body{background:var(--bg);color:var(--t);font-family:var(--sans);font-size:14px;
 .save-status.error{color:var(--red);background:rgba(245,54,92,0.1);border:1px solid rgba(245,54,92,0.25)}
 .save-status:empty{display:none}
 
+/* ═══ VIEW TABS ═══ */
+.tc-view{display:none}
+.tc-view.active{display:block;animation:viewFade .35s cubic-bezier(.4,0,.2,1)}
+@keyframes viewFade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+
+/* ═══ TIMEFRAME BAR ═══ */
+.tf-bar{display:flex;align-items:center;justify-content:space-between;background:var(--glass-bg);backdrop-filter:blur(12px);border:1px solid var(--glass-brd);border-radius:var(--rad-lg);padding:10px 14px;margin-bottom:20px;flex-wrap:wrap;gap:12px}
+.tf-btns{display:flex;gap:6px;flex-wrap:wrap}
+.tf-btn{padding:6px 12px;border-radius:7px;border:1px solid var(--glass-brd);background:rgba(255,255,255,0.02);color:var(--t2);font-family:var(--sans);font-size:11px;font-weight:600;cursor:pointer;transition:all .2s;letter-spacing:0.04em;text-transform:uppercase}
+.tf-btn:hover{color:var(--t);border-color:var(--brd2)}
+.tf-btn.on{color:var(--accent);border-color:rgba(200,169,110,0.3);background:var(--accent-glow)}
+.tf-custom{display:flex;align-items:center;gap:8px}
+.tf-date-i{background:rgba(255,255,255,0.03);border:1px solid var(--glass-brd);border-radius:6px;padding:5px 9px;color:var(--t);font-size:11px;font-family:var(--sans);outline:none;color-scheme:dark}
+.tf-date-i:focus{border-color:var(--accent2)}
+.tf-label{font-size:11px;color:var(--t3);font-weight:600;letter-spacing:0.04em}
+
+/* ═══ BREAKDOWN PANEL ═══ */
+.bd-tabs{display:flex;gap:0;padding:0 18px;border-bottom:1px solid var(--glass-brd)}
+.bd-tab{padding:11px 14px;background:none;border:none;color:var(--t3);font-family:var(--sans);font-size:12px;font-weight:600;cursor:pointer;position:relative;transition:color .2s}
+.bd-tab:hover{color:var(--t2)}
+.bd-tab.on{color:var(--accent)}
+.bd-tab.on::after{content:'';position:absolute;bottom:-1px;left:0;right:0;height:2px;background:var(--accent);box-shadow:0 0 8px rgba(200,169,110,0.4)}
+.bd-body{padding:18px}
+.bd-chart-wrap{position:relative;height:180px;margin-bottom:14px;display:flex;align-items:center;justify-content:center}
+.bd-chart-center{position:absolute;text-align:center;pointer-events:none}
+.bd-chart-label{font-size:9px;letter-spacing:0.1em;text-transform:uppercase;color:var(--t3);font-weight:600}
+.bd-chart-value{font-family:var(--serif);font-size:22px;color:var(--t);letter-spacing:-0.02em;margin-top:2px}
+.bd-list{display:flex;flex-direction:column;gap:9px;max-height:220px;overflow-y:auto}
+.bd-row{display:flex;align-items:center;gap:10px;font-size:13px}
+.bd-dot{width:10px;height:10px;border-radius:3px;flex-shrink:0;box-shadow:0 0 6px currentColor}
+.bd-name{flex:1;color:var(--t);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bd-amount{font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums;font-size:12px}
+.bd-empty{font-size:12px;color:var(--t3);text-align:center;padding:30px 10px}
+
+/* ═══ DASHBOARD CHART ═══ */
+.dash-chart-body{padding:16px 20px 20px;position:relative;height:320px}
+
 /* ═══ SCROLLBAR ═══ */
 ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.06);border-radius:3px}::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,0.1)}
 input[type=number]{-moz-appearance:textfield}input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none}
 
 /* ═══ RESPONSIVE ═══ */
-@media(max-width:1100px){.content-grid{grid-template-columns:1fr}.kpi-strip{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:1100px){.content-grid{grid-template-columns:1fr!important}.kpi-strip{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:700px){.sidebar{display:none}.main{padding:20px 16px}}
 
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
@@ -238,21 +275,13 @@ input[type=number]{-moz-appearance:textfield}input[type=number]::-webkit-inner-s
     </div>
     <nav class="sidebar-nav">
       <div class="nav-section-label">Views</div>
-      <div class="nav-item active">
+      <div class="nav-item active" data-view="dashboard" onclick="switchView('dashboard')">
         <svg class="nav-icon" fill="none" viewBox="0 0 16 16"><rect x="1" y="1" width="6" height="6" rx="1.5" stroke="currentColor" stroke-width="1.2"/><rect x="9" y="1" width="6" height="6" rx="1.5" stroke="currentColor" stroke-width="1.2"/><rect x="1" y="9" width="6" height="6" rx="1.5" stroke="currentColor" stroke-width="1.2"/><rect x="9" y="9" width="6" height="6" rx="1.5" stroke="currentColor" stroke-width="1.2"/></svg>
-        Overview
+        Dashboard
       </div>
-      <div class="nav-item" onclick="document.getElementById('teamSection').scrollIntoView({behavior:'smooth'})">
-        <svg class="nav-icon" fill="none" viewBox="0 0 16 16"><circle cx="6" cy="5" r="2.5" stroke="currentColor" stroke-width="1.2"/><path d="M1 13c0-2.5 2-4 5-4s5 1.5 5 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><circle cx="12" cy="5" r="2" stroke="currentColor" stroke-width="1.2"/><path d="M14 13c0-1.5-1-2.5-2-3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
-        Team Payroll
-      </div>
-      <div class="nav-item" onclick="document.getElementById('softSection').scrollIntoView({behavior:'smooth'})">
-        <svg class="nav-icon" fill="none" viewBox="0 0 16 16"><rect x="1" y="3" width="14" height="10" rx="2" stroke="currentColor" stroke-width="1.2"/><path d="M5 7l2 2-2 2M9 11h2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        Software
-      </div>
-      <div class="nav-item" onclick="document.getElementById('chartSection').scrollIntoView({behavior:'smooth'})">
-        <svg class="nav-icon" fill="none" viewBox="0 0 16 16"><path d="M1 12l4-4 3 3 4-5 3 1" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        Profit History
+      <div class="nav-item" data-view="monthly" onclick="switchView('monthly')">
+        <svg class="nav-icon" fill="none" viewBox="0 0 16 16"><rect x="2" y="2.5" width="12" height="11" rx="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M2 6h12" stroke="currentColor" stroke-width="1.2"/><path d="M5.5 1.5v2M10.5 1.5v2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        Monthly Entry
       </div>
       <div class="nav-section-label" style="margin-top:12px">Data</div>
       <div class="nav-item" onclick="exportCSV()">
@@ -264,7 +293,7 @@ input[type=number]{-moz-appearance:textfield}input[type=number]::-webkit-inner-s
         Back to Home
       </a>
     </nav>
-    <div class="sidebar-footer">
+    <div class="sidebar-footer" id="sidebarFooter" style="display:none">
       <div class="month-pill">
         <button class="chevron" onclick="changeMonth(-1)">&#8592;</button>
         <span class="month-text" id="sidebarMonth">Apr 2026</span>
@@ -274,9 +303,84 @@ input[type=number]{-moz-appearance:textfield}input[type=number]::-webkit-inner-s
   </aside>
 
   <main class="main">
+    <!-- ═══ DASHBOARD VIEW (YTD aggregate) ═══ -->
+    <div class="tc-view active" id="view-dashboard">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Business Overview</div>
+          <div class="page-subtitle" id="dashSubtitle">Year to date · Business Profit Tracker</div>
+        </div>
+      </div>
+
+      <div class="tf-bar">
+        <div class="tf-btns">
+          <button class="tf-btn on" data-tf="ytd" onclick="setTf('ytd',this)">YTD</button>
+          <button class="tf-btn" data-tf="3m" onclick="setTf('3m',this)">3M</button>
+          <button class="tf-btn" data-tf="6m" onclick="setTf('6m',this)">6M</button>
+          <button class="tf-btn" data-tf="1y" onclick="setTf('1y',this)">1Y</button>
+          <button class="tf-btn" data-tf="all" onclick="setTf('all',this)">All</button>
+          <button class="tf-btn" data-tf="custom" onclick="setTf('custom',this)">Custom</button>
+        </div>
+        <div class="tf-custom" id="tfCustom" style="display:none">
+          <input type="month" class="tf-date-i" id="tfFrom" onchange="applyCustomTf()">
+          <span style="color:var(--t3);font-size:11px">to</span>
+          <input type="month" class="tf-date-i" id="tfTo" onchange="applyCustomTf()">
+        </div>
+        <div class="tf-label" id="tfLabel">Year to date</div>
+      </div>
+
+      <div class="kpi-strip">
+        <div class="kpi-card revenue"><div class="kpi-label"><span class="pulse-dot" style="background:var(--green);margin-right:4px"></span> Total Revenue</div><div class="kpi-value green" id="dashRev">$0</div><div class="kpi-sub" id="dashRevSub">total earned</div></div>
+        <div class="kpi-card expenses"><div class="kpi-label"><span class="pulse-dot" style="background:var(--red);margin-right:4px"></span> Total Expenses</div><div class="kpi-value red" id="dashExp">$0</div><div class="kpi-sub" id="dashExpSub">team + software</div></div>
+        <div class="kpi-card profit"><div class="kpi-label">Net Profit</div><div class="kpi-value" id="dashProfit">$0</div><div class="kpi-sub" id="dashProfitSub">after all costs</div></div>
+        <div class="kpi-card roi"><div class="kpi-label">ROI</div><div class="kpi-value gold" id="dashROI">—</div><div class="kpi-sub" id="dashROISub">return on spend</div></div>
+      </div>
+
+      <div class="content-grid" style="grid-template-columns:1.55fr 1fr">
+        <div class="chart-panel" style="margin-bottom:0">
+          <div class="panel-header">
+            <div class="panel-title">Income progression</div>
+            <div style="font-size:11px;color:var(--t3);font-weight:600">monthly revenue · expenses · profit</div>
+          </div>
+          <div class="chart-legend">
+            <div class="legend-item"><div class="legend-dot" style="background:#2dce89;color:#2dce89"></div>Revenue</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#f5365c;color:#f5365c"></div>Expenses</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#c8a96e;color:#c8a96e;border-radius:50%"></div>Profit</div>
+          </div>
+          <div class="dash-chart-body">
+            <div class="empty-chart" id="dashChartEmpty">no data in this timeframe</div>
+            <canvas id="dashChart" style="display:none"></canvas>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-bottom:0">
+          <div class="panel-header">
+            <div class="panel-title">Finance breakdown</div>
+          </div>
+          <div class="bd-tabs">
+            <button class="bd-tab on" data-tab="revenue" onclick="setBdTab('revenue')">By revenue</button>
+            <button class="bd-tab" data-tab="team" onclick="setBdTab('team')">By team</button>
+            <button class="bd-tab" data-tab="software" onclick="setBdTab('software')">By software</button>
+          </div>
+          <div class="bd-body">
+            <div class="bd-chart-wrap">
+              <canvas id="bdChart"></canvas>
+              <div class="bd-chart-center">
+                <div class="bd-chart-label" id="bdCenterLabel">Total revenue</div>
+                <div class="bd-chart-value" id="bdCenterValue">$0</div>
+              </div>
+            </div>
+            <div class="bd-list" id="bdList"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ MONTHLY ENTRY VIEW ═══ -->
+    <div class="tc-view" id="view-monthly">
     <div class="page-header">
       <div>
-        <div class="page-title">ROI Dashboard</div>
+        <div class="page-title">Monthly Entry</div>
         <div class="page-subtitle"><span id="pageSubtitle">April 2026 · Business Profit Tracker</span><span class="save-status" id="saveStatus"></span></div>
       </div>
     </div>
@@ -341,6 +445,7 @@ input[type=number]{-moz-appearance:textfield}input[type=number]::-webkit-inner-s
         <canvas id="histChart" style="display:none"></canvas>
       </div>
     </div>
+    </div>
   </main>
 </div>
 
@@ -385,7 +490,11 @@ async function doLogin(){
 
 /* ═══ CLOUD DATA ═══ */
 async function loadAll(){
-  try{const data=await api('GET','/api/business/data');cache=data.months||{};renderMonth(curM,curY)}
+  try{
+    const data=await api('GET','/api/business/data');cache=data.months||{};
+    renderMonth(curM,curY);
+    renderDashboard();
+  }
   catch(e){console.error('Load error:',e)}
 }
 function setSaveState(s){
@@ -502,6 +611,165 @@ function updateChart(){
   });
 }
 
+/* ═══ VIEW SWITCHING ═══ */
+let curView='dashboard';
+let curTf='ytd',tfFromKey=null,tfToKey=null,curBdTab='revenue';
+let dashChart=null,bdChart=null;
+const BD_COLORS=['#2dce89','#c8a96e','#448aff','#ff9800','#e91e63','#00e676','#9c27b0','#ff5722','#03a9f4','#ffc107','#8bc34a','#673ab7','#f5365c','#26c6da'];
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+
+function switchView(v){
+  curView=v;
+  document.querySelectorAll('.nav-item[data-view]').forEach(el=>el.classList.toggle('active',el.dataset.view===v));
+  document.getElementById('view-dashboard').classList.toggle('active',v==='dashboard');
+  document.getElementById('view-monthly').classList.toggle('active',v==='monthly');
+  document.getElementById('sidebarFooter').style.display=(v==='monthly'?'block':'none');
+  try{localStorage.setItem('soa.business.curView',v)}catch(e){}
+  if(v==='dashboard'){renderDashboard()}else{calc()}
+}
+
+function setTf(tf,btn){
+  curTf=tf;
+  document.querySelectorAll('.tf-btn').forEach(b=>b.classList.toggle('on',b.dataset.tf===tf));
+  document.getElementById('tfCustom').style.display=(tf==='custom'?'flex':'none');
+  if(tf==='custom'){
+    const today=new Date();
+    if(!tfFromKey){tfFromKey=today.getFullYear()+'-01';document.getElementById('tfFrom').value=tfFromKey}
+    if(!tfToKey){tfToKey=mkey(today.getMonth()+1,today.getFullYear());document.getElementById('tfTo').value=tfToKey}
+  }
+  renderDashboard();
+}
+function applyCustomTf(){
+  tfFromKey=document.getElementById('tfFrom').value||null;
+  tfToKey=document.getElementById('tfTo').value||null;
+  renderDashboard();
+}
+
+function tfRange(){
+  const today=new Date();
+  const tm=today.getMonth()+1,ty=today.getFullYear();
+  const toKey=mkey(tm,ty);
+  if(curTf==='all')return{from:'0000-00',to:'9999-99',label:'All months'};
+  if(curTf==='ytd')return{from:ty+'-01',to:toKey,label:'Year to date · '+ty};
+  if(curTf==='custom'){
+    const f=tfFromKey||'0000-00',t=tfToKey||'9999-99';
+    const fmtKey=k=>{const [y,m]=k.split('-');return MONTHS_SHORT[parseInt(m)-1]+" '"+y.slice(2)};
+    return{from:f,to:t,label:fmtKey(f)+' → '+fmtKey(t)};
+  }
+  const months={'3m':3,'6m':6,'1y':12}[curTf];
+  let m=tm-(months-1),y=ty;while(m<=0){m+=12;y--}
+  return{from:mkey(m,y),to:toKey,label:'Last '+months+' months'};
+}
+
+function aggregateRange(){
+  const r=tfRange();
+  const rev=[0,0,0,0];
+  const teamMap={},softMap={};
+  const monthly=[];
+  Object.keys(cache).sort().forEach(k=>{
+    if(k<r.from||k>r.to)return;
+    const d=cache[k];
+    const rArr=d.rev||[0,0,0,0];
+    rArr.forEach((v,i)=>{rev[i]=(rev[i]||0)+(parseFloat(v)||0)});
+    let tc=0;
+    (d.team||[]).forEach(row=>{
+      const a=parseFloat(row.amount)||0;
+      if(a===0&&!row.name)return;
+      const name=((row.name||'')+'').trim()||'(unnamed)';
+      teamMap[name]=(teamMap[name]||0)+a;tc+=a;
+    });
+    let sc=0;
+    (d.soft||[]).forEach(row=>{
+      const a=parseFloat(row.amount)||0;
+      if(a===0&&!row.name)return;
+      const name=((row.name||'')+'').trim()||'(unnamed)';
+      softMap[name]=(softMap[name]||0)+a;sc+=a;
+    });
+    const rv=rArr.reduce((s,v)=>s+(parseFloat(v)||0),0);
+    monthly.push({key:k,rev:rv,team:tc,soft:sc,exp:tc+sc,profit:rv-tc-sc});
+  });
+  return{rev,teamMap,softMap,monthly,label:r.label};
+}
+
+function renderDashboard(){
+  const agg=aggregateRange();
+  const totalRev=agg.rev.reduce((s,v)=>s+v,0);
+  const totalTeam=Object.values(agg.teamMap).reduce((s,v)=>s+v,0);
+  const totalSoft=Object.values(agg.softMap).reduce((s,v)=>s+v,0);
+  const totalExp=totalTeam+totalSoft;
+  const profit=totalRev-totalExp;
+  const roi=totalExp>0?(profit/totalExp)*100:null;
+
+  document.getElementById('dashRev').textContent=fmt(totalRev);
+  document.getElementById('dashExp').textContent=fmt(totalExp);
+  const pe=document.getElementById('dashProfit');
+  pe.textContent=fmt(profit);pe.className='kpi-value '+(profit>0?'green':profit<0?'red':'amber');
+  const re=document.getElementById('dashROI');
+  if(roi!==null){re.textContent=Math.round(roi)+'%';re.className='kpi-value '+(roi>=150?'green':roi>=0?'gold':'red')}
+  else{re.textContent='—';re.className='kpi-value gold'}
+
+  document.getElementById('dashRevSub').textContent=agg.monthly.length+' month'+(agg.monthly.length===1?'':'s')+' included';
+  document.getElementById('dashExpSub').textContent='team '+fmt(totalTeam)+' · sw '+fmt(totalSoft);
+  document.getElementById('dashProfitSub').textContent=totalRev>0?Math.round((profit/totalRev)*100)+'% margin':'after all costs';
+  document.getElementById('dashROISub').textContent='return on spend';
+
+  document.getElementById('tfLabel').textContent=agg.label;
+  document.getElementById('dashSubtitle').textContent=agg.label+' · Business Profit Tracker';
+
+  drawDashChart(agg.monthly);
+  drawBreakdown(agg);
+}
+
+function drawDashChart(monthly){
+  const labels=monthly.map(m=>{const [y,mm]=m.key.split('-').map(Number);return MONTHS_SHORT[mm-1]+" '"+String(y).slice(2)});
+  const revs=monthly.map(m=>Math.round(m.rev));
+  const exps=monthly.map(m=>Math.round(m.exp));
+  const profits=monthly.map(m=>Math.round(m.profit));
+  const empty=document.getElementById('dashChartEmpty'),canvas=document.getElementById('dashChart');
+  if(labels.length<1){empty.style.display='flex';canvas.style.display='none';if(dashChart){dashChart.destroy();dashChart=null}return}
+  empty.style.display='none';canvas.style.display='block';
+  if(dashChart){dashChart.destroy();dashChart=null}
+  dashChart=new Chart(canvas,{
+    data:{labels,datasets:[
+      {type:'line',label:'Revenue',data:revs,borderColor:'#2dce89',backgroundColor:'rgba(45,206,137,0.08)',fill:true,tension:0.35,pointRadius:3,pointBackgroundColor:'#2dce89',borderWidth:2,order:2},
+      {type:'line',label:'Expenses',data:exps,borderColor:'#f5365c',backgroundColor:'rgba(245,54,92,0.04)',fill:false,tension:0.35,pointRadius:3,pointBackgroundColor:'#f5365c',borderWidth:2,borderDash:[5,4],order:3},
+      {type:'line',label:'Profit',data:profits,borderColor:'#c8a96e',backgroundColor:'rgba(200,169,110,0.08)',fill:true,tension:0.35,pointRadius:4,pointBackgroundColor:'#c8a96e',pointBorderColor:'#08080c',pointBorderWidth:2,borderWidth:2.5,order:1}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+      plugins:{legend:{display:false},tooltip:{backgroundColor:'rgba(15,15,21,0.9)',borderColor:'rgba(255,255,255,0.06)',borderWidth:1,titleColor:'#9b9791',bodyColor:'#f0ede8',padding:12,cornerRadius:8,callbacks:{label:ctx=>' '+ctx.dataset.label+': $'+ctx.parsed.y.toLocaleString()}}},
+      scales:{x:{grid:{display:false},border:{display:false},ticks:{color:'#5a5754',font:{size:11,family:"'Montserrat',sans-serif"}}},y:{grid:{color:'rgba(255,255,255,0.03)',drawBorder:false},border:{display:false},ticks:{color:'#5a5754',font:{size:11,family:"'Montserrat',sans-serif"},callback:v=>'$'+(Math.abs(v)>=1000?(v/1000).toFixed(0)+'k':v)}}}}
+  });
+}
+
+function setBdTab(tab){
+  curBdTab=tab;
+  document.querySelectorAll('.bd-tab').forEach(b=>b.classList.toggle('on',b.dataset.tab===tab));
+  drawBreakdown(aggregateRange());
+}
+
+function drawBreakdown(agg){
+  const REV_LABELS=['Mentorship / coaching','YouTube / sponsorships','Affiliate marketing','Other income'];
+  let entries,totalLabel;
+  if(curBdTab==='revenue'){entries=REV_LABELS.map((l,i)=>({name:l,value:agg.rev[i]||0}));totalLabel='Total revenue'}
+  else if(curBdTab==='team'){entries=Object.entries(agg.teamMap).map(([n,v])=>({name:n,value:v}));totalLabel='Total payroll'}
+  else{entries=Object.entries(agg.softMap).map(([n,v])=>({name:n,value:v}));totalLabel='Total software'}
+  entries=entries.filter(e=>e.value>0).sort((a,b)=>b.value-a.value);
+  const total=entries.reduce((s,e)=>s+e.value,0);
+  document.getElementById('bdCenterValue').textContent=fmt(total);
+  document.getElementById('bdCenterLabel').textContent=totalLabel;
+  const list=document.getElementById('bdList'),canvas=document.getElementById('bdChart');
+  if(entries.length===0){list.innerHTML='<div class="bd-empty">No data in this timeframe</div>';canvas.style.display='none';if(bdChart){bdChart.destroy();bdChart=null}return}
+  canvas.style.display='block';
+  list.innerHTML=entries.map((e,i)=>'<div class="bd-row"><div class="bd-dot" style="background:'+BD_COLORS[i%BD_COLORS.length]+';color:'+BD_COLORS[i%BD_COLORS.length]+'"></div><div class="bd-name">'+escapeHtml(e.name)+'</div><div class="bd-amount">'+fmt(e.value)+'</div></div>').join('');
+  if(bdChart){bdChart.destroy();bdChart=null}
+  bdChart=new Chart(canvas,{
+    type:'doughnut',
+    data:{labels:entries.map(e=>e.name),datasets:[{data:entries.map(e=>e.value),backgroundColor:entries.map((_,i)=>BD_COLORS[i%BD_COLORS.length]),borderColor:'#08080c',borderWidth:2}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:'72%',
+      plugins:{legend:{display:false},tooltip:{backgroundColor:'rgba(15,15,21,0.9)',borderColor:'rgba(255,255,255,0.06)',borderWidth:1,titleColor:'#9b9791',bodyColor:'#f0ede8',padding:10,cornerRadius:8,callbacks:{label:ctx=>' '+ctx.label+': $'+ctx.parsed.toLocaleString()}}}}
+  });
+}
+
 /* ═══ MONTH NAV ═══ */
 function changeMonth(dir){
   snapshot();
@@ -524,7 +792,8 @@ window.addEventListener('pagehide',flushSaveBeacon);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flushSaveBeacon()});
 
 /* ═══ INIT ═══ */
-(async function init(){try{await api('GET','/api/check');hideLogin();await loadAll()}catch(e){showLogin()}})();
+try{const v=localStorage.getItem('soa.business.curView');if(v==='dashboard'||v==='monthly')curView=v}catch(e){}
+(async function init(){try{await api('GET','/api/check');hideLogin();await loadAll();switchView(curView)}catch(e){showLogin()}})();
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){}});
 </script>
 </body>
