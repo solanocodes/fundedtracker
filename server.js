@@ -312,9 +312,18 @@ app.post('/api/business/months', authMiddleware, async (req, res) => {
   }
 });
 
-// Serve static files
-app.use(express.static(path.join(__dirname, 'site')));
+// Serve static files. HTML gets no-cache so deploys are visible on a normal
+// refresh (the browser still uses ETag revalidation to skip the body when
+// unchanged). Other assets keep default caching.
+app.use(express.static(path.join(__dirname, 'site'), {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache');
+    }
+  }
+}));
 app.get('*', (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache');
   res.sendFile(path.join(__dirname, 'site', 'index.html'));
 });
 
