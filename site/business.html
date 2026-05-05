@@ -193,6 +193,14 @@ body{background:var(--bg);color:var(--t);font-family:var(--sans);font-size:14px;
 .pulse-dot::after{content:'';position:absolute;inset:-3px;border-radius:50%;background:inherit;opacity:.3;animation:pDot 2s ease-in-out infinite}
 @keyframes pDot{0%,100%{transform:scale(1);opacity:.3}50%{transform:scale(1.8);opacity:0}}
 
+/* ═══ SAVE STATUS ═══ */
+.save-status{display:inline-block;margin-left:10px;font-size:11px;font-weight:600;letter-spacing:0.04em;padding:2px 8px;border-radius:10px;transition:all .2s;vertical-align:middle}
+.save-status.dirty{color:var(--amber);background:rgba(255,184,0,0.08);border:1px solid rgba(255,184,0,0.2)}
+.save-status.saving{color:var(--t2);background:rgba(255,255,255,0.04);border:1px solid var(--glass-brd)}
+.save-status.saved{color:var(--green);background:rgba(45,206,137,0.08);border:1px solid rgba(45,206,137,0.2)}
+.save-status.error{color:var(--red);background:rgba(245,54,92,0.1);border:1px solid rgba(245,54,92,0.25)}
+.save-status:empty{display:none}
+
 /* ═══ SCROLLBAR ═══ */
 ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.06);border-radius:3px}::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,0.1)}
 input[type=number]{-moz-appearance:textfield}input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none}
@@ -269,7 +277,7 @@ input[type=number]{-moz-appearance:textfield}input[type=number]::-webkit-inner-s
     <div class="page-header">
       <div>
         <div class="page-title">ROI Dashboard</div>
-        <div class="page-subtitle" id="pageSubtitle">April 2026 · Business Profit Tracker</div>
+        <div class="page-subtitle"><span id="pageSubtitle">April 2026 · Business Profit Tracker</span><span class="save-status" id="saveStatus"></span></div>
       </div>
     </div>
 
@@ -340,7 +348,8 @@ input[type=number]{-moz-appearance:textfield}input[type=number]::-webkit-inner-s
 const MONTHS_LONG=['January','February','March','April','May','June','July','August','September','October','November','December'];
 const MONTHS_SHORT=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const now=new Date();let curM=now.getMonth()+1,curY=now.getFullYear();
-let cache={},histChart=null,saveTimeout=null;
+try{const saved=localStorage.getItem('soa.business.curMonth');if(saved){const [sy,sm]=saved.split('-').map(Number);if(sy>=2000&&sm>=1&&sm<=12){curM=sm;curY=sy}}}catch(e){}
+let cache={},histChart=null,saveTimeout=null,saveState='idle',savedStateTimer=null;
 function mkey(m,y){return y+'-'+String(m).padStart(2,'0')}
 function mlabel(m,y){return MONTHS_SHORT[m-1]+' '+y}
 
@@ -379,9 +388,32 @@ async function loadAll(){
   try{const data=await api('GET','/api/business/data');cache=data.months||{};renderMonth(curM,curY)}
   catch(e){console.error('Load error:',e)}
 }
+function setSaveState(s){
+  saveState=s;
+  const el=document.getElementById('saveStatus');if(!el)return;
+  const map={idle:'',dirty:'unsaved changes',saving:'saving…',saved:'✓ saved',error:'⚠ save failed — retry'};
+  el.textContent=map[s]||'';el.className='save-status '+s;
+  if(savedStateTimer){clearTimeout(savedStateTimer);savedStateTimer=null}
+  if(s==='saved'){savedStateTimer=setTimeout(()=>{if(saveState==='saved')setSaveState('idle')},2500)}
+}
 async function saveMonth(m,y){
   const k=mkey(m,y),d=cache[k];if(!d)return;
-  try{await api('POST','/api/business/months',{key:k,data:d})}catch(e){console.error('Save error:',e)}
+  setSaveState('saving');
+  try{await api('POST','/api/business/months',{key:k,data:d});setSaveState('saved')}
+  catch(e){console.error('Save error:',e);setSaveState('error')}
+}
+function flushSaveBeacon(){
+  if(saveTimeout){clearTimeout(saveTimeout);saveTimeout=null}
+  if(saveState!=='dirty'&&saveState!=='error')return;
+  const k=mkey(curM,curY),d=cache[k];if(!d)return;
+  const payload=JSON.stringify({key:k,data:d});
+  try{
+    if(navigator.sendBeacon){
+      navigator.sendBeacon('/api/business/months',new Blob([payload],{type:'application/json'}));
+    }else{
+      fetch('/api/business/months',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:payload,keepalive:true});
+    }
+  }catch(e){}
 }
 
 /* ═══ DEFAULTS ═══ */
@@ -419,7 +451,7 @@ function snapshot(){
   cache[k].team=[...document.querySelectorAll('.team-row')].map(r=>({name:r.querySelector('.rn').value,role:(r.querySelector('.rt')||{value:''}).value,amount:parseFloat(r.querySelector('.ra').value)||0}));
   cache[k].soft=[...document.querySelectorAll('.soft-row')].map(r=>({name:r.querySelector('.rn').value,amount:parseFloat(r.querySelector('.ra').value)||0}));
 }
-function onInput(){snapshot();calc();clearTimeout(saveTimeout);saveTimeout=setTimeout(()=>saveMonth(curM,curY),1500)}
+function onInput(){snapshot();calc();setSaveState('dirty');clearTimeout(saveTimeout);const m=curM,y=curY;saveTimeout=setTimeout(()=>{saveTimeout=null;saveMonth(m,y)},700)}
 
 /* ═══ CALC ═══ */
 function fmt(n){const abs=Math.abs(Math.round(n));const s=abs>=10000?'$'+(abs/1000).toFixed(1)+'k':'$'+abs.toLocaleString();return n<0?'-'+s:s}
@@ -471,12 +503,25 @@ function updateChart(){
 }
 
 /* ═══ MONTH NAV ═══ */
-function changeMonth(dir){snapshot();curM+=dir;if(curM>12){curM=1;curY++}if(curM<1){curM=12;curY--}renderMonth(curM,curY)}
+function changeMonth(dir){
+  snapshot();
+  // flush any pending save for the month we're leaving before switching
+  if(saveTimeout){clearTimeout(saveTimeout);saveTimeout=null}
+  if(saveState==='dirty'||saveState==='error'){saveMonth(curM,curY)}
+  curM+=dir;if(curM>12){curM=1;curY++}if(curM<1){curM=12;curY--}
+  try{localStorage.setItem('soa.business.curMonth',mkey(curM,curY))}catch(e){}
+  renderMonth(curM,curY);
+}
 function exportCSV(){
   let csv='Month,Revenue,Team Cost,Software Cost,Net Profit,ROI %\n';
   Object.keys(cache).sort().forEach(k=>{const d=cache[k],rv=d.rev.reduce((s,v)=>s+v,0),tc=d.team.reduce((s,r)=>s+r.amount,0),sc=d.soft.reduce((s,r)=>s+r.amount,0),exp=tc+sc,profit=rv-exp,roi=exp>0?Math.round((profit/exp)*100):'';csv+=k+',$'+Math.round(rv)+',$'+Math.round(tc)+',$'+Math.round(sc)+',$'+Math.round(profit)+','+roi+'%\n'});
   const a=document.createElement('a');a.href='data:text/csv,'+encodeURIComponent(csv);a.download='soa-business-roi.csv';a.click();
 }
+
+/* ═══ UNLOAD: FLUSH PENDING SAVES ═══ */
+window.addEventListener('beforeunload',flushSaveBeacon);
+window.addEventListener('pagehide',flushSaveBeacon);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flushSaveBeacon()});
 
 /* ═══ INIT ═══ */
 (async function init(){try{await api('GET','/api/check');hideLogin();await loadAll()}catch(e){showLogin()}})();
