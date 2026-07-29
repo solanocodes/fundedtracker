@@ -113,6 +113,41 @@ async function initDB() {
     await client.query(
       "INSERT INTO settings (key, value) VALUES ('annualTarget', '900000') ON CONFLICT (key) DO NOTHING"
     );
+    // One-time restore: the calc() crash (fixed in 9f55c4e) silently blocked all
+    // manual saves, losing the owner's re-entered July 2026 software list. Restore
+    // it once, unless the month already carries real software data.
+    const seeded = await client.query("SELECT 1 FROM settings WHERE key='restoreJul2026Soft'");
+    if (!seeded.rows.length) {
+      const JULY_SOFT = [
+        { name: 'YouTube tools', amount: 154 },
+        { name: 'CRM / sales', amount: 103 },
+        { name: 'Claude / AI', amount: 213.20 },
+        { name: 'Marketing', amount: 4400 },
+        { name: 'Sendblue', amount: 1000 },
+        { name: 'Typeform', amount: 137 },
+        { name: 'Kit', amount: 126.62 },
+        { name: 'Trakyo', amount: 197 },
+        { name: 'Manychat', amount: 101.27 },
+        { name: 'Retti', amount: 49 },
+        { name: 'TradeCopia', amount: 149.99 }
+      ];
+      const row = await client.query("SELECT data FROM business_months WHERE key='2026-07'");
+      const data = row.rows.length ? row.rows[0].data : {
+        rev: [0, 0, 0, 0],
+        team: [{ name: 'Jesus', role: 'Closer', amount: 0 }, { name: 'Zain', role: 'Setter', amount: 0 }],
+        soft: []
+      };
+      const softHasData = (data.soft || []).some(r => r.name && String(r.name).trim() && (parseFloat(r.amount) || 0) > 0);
+      if (!softHasData) {
+        data.soft = JULY_SOFT;
+        await client.query(
+          "INSERT INTO business_months (key, data) VALUES ('2026-07', $1) ON CONFLICT (key) DO UPDATE SET data = $1",
+          [JSON.stringify(data)]
+        );
+        console.log('Restored July 2026 software list (11 tools)');
+      }
+      await client.query("INSERT INTO settings (key, value) VALUES ('restoreJul2026Soft', 'true') ON CONFLICT (key) DO NOTHING");
+    }
     console.log('Database tables ready');
   } finally {
     client.release();

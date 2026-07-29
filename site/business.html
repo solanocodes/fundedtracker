@@ -113,6 +113,9 @@ body{background:var(--bg);color:var(--t);font-family:var(--sans);font-size:14px;
 .panel-meta{font-family:var(--mono);font-size:10px;color:var(--t3);letter-spacing:0.03em}
 .panel-badge{background:var(--bg3);border:1px solid var(--brd);border-radius:4px;padding:2px 7px;font-family:var(--mono);font-size:9px;color:var(--t3);font-weight:500;text-transform:none;letter-spacing:0.04em}
 .panel-total{font-family:var(--mono);font-size:13px;color:var(--accent);font-weight:600;font-variant-numeric:tabular-nums}
+.copy-btn{background:var(--bg3);border:1px solid var(--brd);border-radius:6px;color:var(--t3);font-family:var(--mono);font-size:9px;letter-spacing:0.08em;text-transform:uppercase;padding:4px 10px;cursor:pointer;transition:all .18s;white-space:nowrap}
+.copy-btn:hover{color:var(--accent-hi);border-color:rgba(201,169,98,0.4)}
+.copy-btn.done{color:var(--green);border-color:rgba(61,220,151,0.4)}
 
 /* ═══ LIST ROWS (monthly entry) ═══ */
 .list-row{display:flex;align-items:center;gap:10px;padding:11px 18px;border-bottom:1px solid var(--brd);transition:background .15s}
@@ -572,7 +575,10 @@ input[type=number]{-moz-appearance:textfield}input[type=number]::-webkit-inner-s
       <div class="panel" id="teamSection">
         <div class="panel-header">
           <div class="panel-title">Team payroll <span class="panel-badge" id="teamCount">0 members</span></div>
-          <div class="panel-total" id="teamTotal">$0</div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <button class="copy-btn" id="copyTeamBtn" onclick="copyToNextMonth('team')" title="Duplicate these rows into next month">⧉ copy → next mo</button>
+            <div class="panel-total" id="teamTotal">$0</div>
+          </div>
         </div>
         <div id="teamRows"></div>
         <button class="add-row-btn" onclick="addTeamRow()">+ add team member</button>
@@ -580,7 +586,10 @@ input[type=number]{-moz-appearance:textfield}input[type=number]::-webkit-inner-s
       <div class="panel" id="softSection">
         <div class="panel-header">
           <div class="panel-title">Software &amp; tools <span class="panel-badge" id="softCount">0 tools</span></div>
-          <div class="panel-total" id="softTotal">$0</div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <button class="copy-btn" id="copySoftBtn" onclick="copyToNextMonth('soft')" title="Duplicate these rows into next month">⧉ copy → next mo</button>
+            <div class="panel-total" id="softTotal">$0</div>
+          </div>
         </div>
         <div id="softRows"></div>
         <button class="add-row-btn" onclick="addSoftRow()">+ add software</button>
@@ -1361,6 +1370,30 @@ function changeMonth(dir){
   try{localStorage.setItem('soa.business.curMonth',mkey(curM,curY))}catch(e){}
   renderMonth(curM,curY);
 }
+/* ═══ COPY ROWS TO NEXT MONTH ═══ */
+async function copyToNextMonth(kind){
+  snapshot(); // capture any in-progress edits first
+  const src=cache[mkey(curM,curY)];
+  const rows=((src&&src[kind])||[]).filter(r=>(r.name&&String(r.name).trim())||parseFloat(r.amount)>0).map(r=>({...r}));
+  if(!rows.length){alert('Nothing to copy — this month has no '+(kind==='soft'?'software':'team')+' rows.');return}
+  let m=curM+1,y=curY;if(m>12){m=1;y++}
+  const k=mkey(m,y);
+  if(!cache[k])cache[k]={rev:[0,0,0,0],team:[],soft:[]};
+  const dest=cache[k][kind]||[];
+  const destHasData=dest.some(r=>(r.name&&String(r.name).trim())&&parseFloat(r.amount)>0);
+  if(destHasData&&!confirm(mlabel(m,y)+' already has '+(kind==='soft'?'software':'team')+' entries — replace them with this month’s list?'))return;
+  cache[k][kind]=rows;
+  const btn=document.getElementById(kind==='soft'?'copySoftBtn':'copyTeamBtn');
+  const orig=btn.textContent;
+  try{
+    await api('POST','/api/business/months',{key:k,data:cache[k]});
+    btn.textContent='✓ copied to '+mlabel(m,y);btn.classList.add('done');
+  }catch(e){
+    btn.textContent='⚠ copy failed';
+  }
+  setTimeout(()=>{btn.textContent=orig;btn.classList.remove('done')},2500);
+}
+
 function exportCSV(){
   let csv='Month,Revenue,Team Cost,Software Cost,Net Profit,ROI %\n';
   const keys=[...new Set([...Object.keys(cache),...Object.keys(syncData),...Object.keys(closerData)])].sort();
