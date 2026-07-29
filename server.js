@@ -10,10 +10,11 @@ const PORT = process.env.PORT || 8080;
 const TRACKER_PASSWORD = process.env.TRACKER_PASSWORD || 'changeme';
 const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const AI_ENABLED = !!process.env.ANTHROPIC_API_KEY;
-const DIGEST_ENABLED = !!process.env.RESEND_API_KEY;
-const DIGEST_TO = process.env.DIGEST_TO || 'sean@simplyoptionsacademy.com';
+const EMAIL_ENABLED = !!(process.env.RESEND_API_KEY && process.env.DIGEST_TO);
+const DIGEST_TO = process.env.DIGEST_TO || '';
 const DIGEST_FROM = process.env.DIGEST_FROM || 'SOA Tracker <onboarding@resend.dev>';
 const DIGEST_TZ = process.env.DIGEST_TZ || 'America/New_York';
+const DISCORD_WEBHOOK_RE = /^https:\/\/(discord\.com|discordapp\.com)\/api\/webhooks\/\d+\/[\w-]+$/;
 
 const anthropic = AI_ENABLED ? new Anthropic() : null;
 
@@ -112,37 +113,6 @@ async function initDB() {
     await client.query(
       "INSERT INTO settings (key, value) VALUES ('annualTarget', '900000') ON CONFLICT (key) DO NOTHING"
     );
-    // Seed March 2026 data if business_months is empty
-    const count = await client.query('SELECT COUNT(*) FROM business_months');
-    if (parseInt(count.rows[0].count) === 0) {
-      await client.query(
-        "INSERT INTO business_months (key, data) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-        ['2026-03', JSON.stringify({
-          rev: [41069, 2029.28, 0, 11686],
-          team: [
-            {name:'Jesus',role:'Closer',amount:2085},
-            {name:'Zain',role:'Closer',amount:1237},
-            {name:'Keshawn',role:'Setter',amount:4482.75},
-            {name:'Shayan',role:'COO',amount:2074},
-            {name:'Bryce and Demon',role:'Role',amount:500}
-          ],
-          soft: [
-            {name:'YouTube tools',amount:39},
-            {name:'CRM / sales',amount:100},
-            {name:'Claude / AI',amount:192.57},
-            {name:'Notion',amount:12.79},
-            {name:'Sim2Funded',amount:29},
-            {name:'Typeform',amount:137.51},
-            {name:'Kit',amount:94.7},
-            {name:'manychat',amount:101.27},
-            {name:'Sendblue',amount:772},
-            {name:'Quickbooks',amount:100}
-          ]
-        })]
-      );
-      console.log('Seeded March 2026 business data');
-    }
-
     console.log('Database tables ready');
   } finally {
     client.release();
@@ -358,7 +328,7 @@ app.get('/api/business/data', authMiddleware, async (req, res) => {
         sheetLastSync: state.closerSync ? state.closerSync.syncedAt : null,
         sheetError: state.closerSync ? state.closerSync.error || null : null,
         aiEnabled: AI_ENABLED,
-        digestEnabled: DIGEST_ENABLED
+        digestEnabled: EMAIL_ENABLED || !!(await getSetting('discordWebhook'))
       }
     });
   } catch (err) {
@@ -425,9 +395,39 @@ function parseYM(s) {
   if (m) return m[1] + '-' + String(parseInt(m[2])).padStart(2, '0');
   m = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
   if (m) return m[3] + '-' + String(parseInt(m[1])).padStart(2, '0');
+  // Date-object fallback only for strings that look like dates (has separators or
+  // month names) — otherwise plain numbers like "3000" would parse as year 3000
+  if (!/[\/\-A-Za-z]/.test(str) || !str) return null;
   const d = new Date(str);
   if (!isNaN(d)) return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
   return null;
+}
+function colLetter(idx) {
+  let s = ''; idx = idx + 1;
+  while (idx > 0) { const r = (idx - 1) % 26; s = String.fromCharCode(65 + r) + s; idx = Math.floor((idx - 1) / 26); }
+  return s;
+}
+// Resolve which columns to read: headers named cashCollected / recurringCash win
+// over configured letters, and the date column self-detects if the configured one
+// doesn't parse — so the sync works even if the sheet layout shifts.
+function detectColumns(rows, cfg) {
+  const header = rows[0] || [];
+  const norm = s => String(s || '').toLowerCase().replace(/[^a-z]/g, '');
+  let ci = header.findIndex(h => norm(h) === 'cashcollected');
+  let ri = header.findIndex(h => norm(h) === 'recurringcash');
+  if (ci < 0) ci = colIdx(cfg.cashCol || 'L');
+  if (ri < 0) ri = colIdx(cfg.recurCol || 'M');
+  const scan = idx => { let n = 0; for (let i = 1; i < Math.min(rows.length, 200); i++) { if (parseYM((rows[i] || [])[idx])) n++; } return n; };
+  let di = colIdx(cfg.dateCol || 'A');
+  if (scan(di) === 0) {
+    let best = -1, bestN = 0;
+    for (let c = 0; c < header.length; c++) {
+      const n = scan(c) + (/date/i.test(String(header[c] || '')) && scan(c) > 0 ? 5 : 0);
+      if (n > bestN) { bestN = n; best = c; }
+    }
+    if (best >= 0) di = best;
+  }
+  return { di, ci, ri };
 }
 function sheetIdFromUrl(url) {
   const m = String(url ?? '').match(/\/d\/([a-zA-Z0-9_-]+)/);
@@ -452,7 +452,7 @@ async function syncSheet() {
       return r;
     }
     const rows = parseCSV(text);
-    const di = colIdx(cfg.dateCol || 'A'), ci = colIdx(cfg.cashCol || 'L'), ri = colIdx(cfg.recurCol || 'M');
+    const { di, ci, ri } = detectColumns(rows, cfg);
     const data = {}; let matched = 0;
     for (let i = 1; i < rows.length; i++) { // skip header row
       const ym = parseYM(rows[i][di]);
@@ -462,9 +462,13 @@ async function syncSheet() {
       data[ym].cash += cash; data[ym].recurring += recur; data[ym].total += cash + recur;
       matched++;
     }
-    const result = { data, rows: matched, syncedAt: new Date().toISOString() };
+    const result = {
+      data, rows: matched, syncedAt: new Date().toISOString(),
+      cols: { date: colLetter(di), cash: colLetter(ci), recurring: colLetter(ri) }
+    };
+    if (matched === 0) result.error = 'No rows with readable dates found — check the tab name and date column';
     await setSetting('closerSync', result);
-    console.log(`Sheet sync: ${matched} rows across ${Object.keys(data).length} months`);
+    console.log(`Sheet sync: ${matched} rows across ${Object.keys(data).length} months (date=${result.cols.date} cash=${result.cols.cash} recur=${result.cols.recurring})`);
     return result;
   } catch (err) {
     console.error('Sheet sync error:', err);
@@ -518,8 +522,8 @@ async function loadBusinessState() {
 // ── Settings routes ──
 app.get('/api/settings', authMiddleware, async (req, res) => {
   try {
-    const [annualTarget, sheetCfg, closerSync] = await Promise.all([
-      getSetting('annualTarget'), getSetting('sheetCfg'), getSetting('closerSync')
+    const [annualTarget, sheetCfg, closerSync, discordWebhook] = await Promise.all([
+      getSetting('annualTarget'), getSetting('sheetCfg'), getSetting('closerSync'), getSetting('discordWebhook')
     ]);
     res.json({
       annualTarget: parseFloat(annualTarget) || 900000,
@@ -527,8 +531,10 @@ app.get('/api/settings', authMiddleware, async (req, res) => {
       sheetLastSync: closerSync ? closerSync.syncedAt : null,
       sheetError: closerSync ? closerSync.error || null : null,
       sheetRows: closerSync ? closerSync.rows || 0 : 0,
+      sheetCols: closerSync ? closerSync.cols || null : null,
+      discordWebhook: discordWebhook || '',
       aiEnabled: AI_ENABLED,
-      digestEnabled: DIGEST_ENABLED
+      digestEnabled: EMAIL_ENABLED || !!discordWebhook
     });
   } catch (err) {
     console.error('GET /api/settings error:', err);
@@ -538,11 +544,18 @@ app.get('/api/settings', authMiddleware, async (req, res) => {
 
 app.post('/api/settings', authMiddleware, async (req, res) => {
   try {
-    const { annualTarget, sheetCfg } = req.body;
+    const { annualTarget, sheetCfg, discordWebhook } = req.body;
     if (annualTarget !== undefined) {
       const t = parseFloat(annualTarget);
       if (!Number.isFinite(t) || t < 0) return res.status(400).json({ error: 'Invalid target' });
       await setSetting('annualTarget', t);
+    }
+    if (discordWebhook !== undefined) {
+      const w = String(discordWebhook || '').trim();
+      if (w && !DISCORD_WEBHOOK_RE.test(w)) {
+        return res.status(400).json({ error: 'That does not look like a Discord webhook URL (https://discord.com/api/webhooks/…)' });
+      }
+      await setSetting('discordWebhook', w || null);
     }
     if (sheetCfg !== undefined) {
       if (sheetCfg === null) { await setSetting('sheetCfg', null); await setSetting('closerSync', null); }
@@ -642,10 +655,10 @@ app.post('/api/ai', authMiddleware, async (req, res) => {
   }
 });
 
-// ── Monday digest email (Resend) ──
+// ── Monday digest (Discord webhook and/or email) ──
 function fmtUSD(n) { return '$' + Math.round(n).toLocaleString('en-US'); }
 
-async function buildDigestHTML() {
+async function buildDigestData() {
   const state = await loadBusinessState();
   const now = new Date();
   const weekAgo = new Date(now.getTime() - 7 * 24 * 3600 * 1000).toISOString().slice(0, 10);
@@ -656,73 +669,124 @@ async function buildDigestHTML() {
   ]);
   const ymNow = now.toISOString().slice(0, 7);
   const year = ymNow.slice(0, 4);
-  const cur = state.monthly.find(m => m.ym === ymNow);
-  const ytd = state.monthly.filter(m => m.ym.startsWith(year));
-  const ytdRev = ytd.reduce((s, m) => s + m.revenue, 0);
-  const ytdProfit = ytd.reduce((s, m) => s + m.profit, 0);
+  const cur = state.monthly.find(m => m.ym === ymNow) || { revenue: 0, expenses: 0, profit: 0 };
+  const ytdRows = state.monthly.filter(m => m.ym.startsWith(year));
+  const ytdRev = ytdRows.reduce((s, m) => s + m.revenue, 0);
+  const ytdProfit = ytdRows.reduce((s, m) => s + m.profit, 0);
   const pct = state.annualTarget > 0 ? Math.round((ytdRev / state.annualTarget) * 100) : 0;
   const monthsLeft = 12 - now.getMonth();
   const needPerMo = monthsLeft > 0 ? Math.max(0, state.annualTarget - ytdRev) / monthsLeft : 0;
+  return {
+    now, ymNow, year,
+    week: { payouts: pay.rows[0], commissions: com.rows[0], expenses: exp.rows[0] },
+    mtd: cur, ytdRev, ytdProfit, pct, needPerMo, monthsLeft, target: state.annualTarget
+  };
+}
+
+function discordPayload(d) {
+  const bar = (() => {
+    const filled = Math.max(0, Math.min(10, Math.round(d.pct / 10)));
+    return '█'.repeat(filled) + '░'.repeat(10 - filled);
+  })();
+  return {
+    username: 'SOA Tracker',
+    embeds: [{
+      title: '📊 Weekly Digest — ' + d.now.toDateString(),
+      color: 0xC8A96E,
+      fields: [
+        {
+          name: '💰 Funded tracker (last 7 days)', inline: false,
+          value: `Payouts: **${fmtUSD(d.week.payouts.t)}** (${d.week.payouts.n})\nCommissions: **${fmtUSD(d.week.commissions.t)}** (${d.week.commissions.n})\nExpenses: **${fmtUSD(d.week.expenses.t)}** (${d.week.expenses.n})`
+        },
+        {
+          name: '🏢 Business — ' + d.ymNow, inline: false,
+          value: `Revenue: **${fmtUSD(d.mtd.revenue)}**\nExpenses: **${fmtUSD(d.mtd.expenses)}**\nNet profit: **${fmtUSD(d.mtd.profit)}**`
+        },
+        {
+          name: `🎯 ${d.year} target — ${fmtUSD(d.target)}`, inline: false,
+          value: `\`${bar}\` **${d.pct}%**\nYTD revenue: **${fmtUSD(d.ytdRev)}** · YTD profit: **${fmtUSD(d.ytdProfit)}**\nNeed **${fmtUSD(d.needPerMo)}/mo** for the remaining ${d.monthsLeft} month${d.monthsLeft === 1 ? '' : 's'}`
+        }
+      ],
+      footer: { text: 'Sent every Monday 8am ET by your tracker' }
+    }]
+  };
+}
+
+function digestHTML(d) {
   const row = (l, v) => `<tr><td style="padding:6px 12px 6px 0;color:#666">${l}</td><td style="padding:6px 0;font-weight:600;text-align:right">${v}</td></tr>`;
   return `
   <div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;color:#1a1a1a">
     <h2 style="margin:0 0 4px">SOA Weekly Digest</h2>
-    <p style="color:#888;margin:0 0 20px">${now.toDateString()}</p>
+    <p style="color:#888;margin:0 0 20px">${d.now.toDateString()}</p>
     <h3 style="margin:0 0 8px;border-bottom:1px solid #eee;padding-bottom:6px">Funded tracker — last 7 days</h3>
     <table style="width:100%;border-collapse:collapse;margin-bottom:20px">
-      ${row('Payouts', `${fmtUSD(pay.rows[0].t)} <span style="color:#999">(${pay.rows[0].n})</span>`)}
-      ${row('Commissions', `${fmtUSD(com.rows[0].t)} <span style="color:#999">(${com.rows[0].n})</span>`)}
-      ${row('Expenses', `${fmtUSD(exp.rows[0].t)} <span style="color:#999">(${exp.rows[0].n})</span>`)}
+      ${row('Payouts', fmtUSD(d.week.payouts.t) + ` (${d.week.payouts.n})`)}
+      ${row('Commissions', fmtUSD(d.week.commissions.t) + ` (${d.week.commissions.n})`)}
+      ${row('Expenses', fmtUSD(d.week.expenses.t) + ` (${d.week.expenses.n})`)}
     </table>
-    <h3 style="margin:0 0 8px;border-bottom:1px solid #eee;padding-bottom:6px">Business — ${ymNow}</h3>
+    <h3 style="margin:0 0 8px;border-bottom:1px solid #eee;padding-bottom:6px">Business — ${d.ymNow}</h3>
     <table style="width:100%;border-collapse:collapse;margin-bottom:20px">
-      ${row('Revenue (MTD)', fmtUSD(cur ? cur.revenue : 0))}
-      ${row('Expenses (MTD)', fmtUSD(cur ? cur.expenses : 0))}
-      ${row('Net profit (MTD)', fmtUSD(cur ? cur.profit : 0))}
+      ${row('Revenue (MTD)', fmtUSD(d.mtd.revenue))}
+      ${row('Expenses (MTD)', fmtUSD(d.mtd.expenses))}
+      ${row('Net profit (MTD)', fmtUSD(d.mtd.profit))}
     </table>
-    <h3 style="margin:0 0 8px;border-bottom:1px solid #eee;padding-bottom:6px">${year} vs target</h3>
+    <h3 style="margin:0 0 8px;border-bottom:1px solid #eee;padding-bottom:6px">${d.year} vs target</h3>
     <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
-      ${row('YTD revenue', `${fmtUSD(ytdRev)} <span style="color:#999">(${pct}% of ${fmtUSD(state.annualTarget)})</span>`)}
-      ${row('YTD net profit', fmtUSD(ytdProfit))}
-      ${row('Needed per remaining month', fmtUSD(needPerMo))}
+      ${row('YTD revenue', `${fmtUSD(d.ytdRev)} (${d.pct}% of ${fmtUSD(d.target)})`)}
+      ${row('YTD net profit', fmtUSD(d.ytdProfit))}
+      ${row('Needed per remaining month', fmtUSD(d.needPerMo))}
     </table>
     <p style="color:#bbb;font-size:12px">Sent automatically every Monday morning by your tracker.</p>
   </div>`;
 }
 
 async function sendDigest() {
-  if (!DIGEST_ENABLED) return { error: 'RESEND_API_KEY not set' };
-  const html = await buildDigestHTML();
-  const resp = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: DIGEST_FROM, to: [DIGEST_TO], subject: 'SOA Weekly Digest — ' + new Date().toDateString(), html })
-  });
-  if (!resp.ok) {
-    const body = await resp.text();
-    console.error('Digest send failed:', resp.status, body);
-    return { error: 'Resend rejected the email (' + resp.status + ')' };
+  const webhook = await getSetting('discordWebhook');
+  const channels = [];
+  if (!webhook && !EMAIL_ENABLED) return { error: 'No digest channel configured — add a Discord webhook in Settings.' };
+  const d = await buildDigestData();
+  if (webhook && DISCORD_WEBHOOK_RE.test(webhook)) {
+    const resp = await fetch(webhook, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(discordPayload(d))
+    });
+    if (resp.ok || resp.status === 204) channels.push('discord');
+    else {
+      const body = await resp.text();
+      console.error('Discord digest failed:', resp.status, body.slice(0, 300));
+      return { error: 'Discord rejected the webhook (' + resp.status + ') — re-check the URL in Settings.' };
+    }
   }
-  console.log('Digest sent to', DIGEST_TO);
-  return { ok: true };
+  if (EMAIL_ENABLED) {
+    const resp = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: DIGEST_FROM, to: [DIGEST_TO], subject: 'SOA Weekly Digest — ' + d.now.toDateString(), html: digestHTML(d) })
+    });
+    if (resp.ok) channels.push('email');
+    else console.error('Email digest failed:', resp.status, await resp.text());
+  }
+  console.log('Digest sent via:', channels.join(', ') || 'nothing');
+  return channels.length ? { ok: true, channels } : { error: 'Digest could not be delivered' };
 }
 
 app.post('/api/digest/test', authMiddleware, async (req, res) => {
-  if (!DIGEST_ENABLED) return res.status(503).json({ error: 'Email not configured. Add RESEND_API_KEY in Railway → Variables.' });
   try { res.json(await sendDigest()); }
   catch (err) { console.error('Digest test error:', err); res.status(500).json({ error: 'Digest failed' }); }
 });
 
 function digestTick() {
-  if (!DIGEST_ENABLED) return;
   const parts = {};
   new Intl.DateTimeFormat('en-US', { timeZone: DIGEST_TZ, weekday: 'short', hour: 'numeric', hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit' })
     .formatToParts(new Date()).forEach(p => { parts[p.type] = p.value; });
   if (parts.weekday !== 'Mon' || parseInt(parts.hour) !== 8) return;
   const todayKey = `${parts.year}-${parts.month}-${parts.day}`;
-  getSetting('digestLastSent').then(last => {
+  getSetting('digestLastSent').then(async last => {
     if (last === todayKey) return;
-    return setSetting('digestLastSent', todayKey).then(sendDigest);
+    const webhook = await getSetting('discordWebhook');
+    if (!webhook && !EMAIL_ENABLED) return;
+    await setSetting('digestLastSent', todayKey);
+    return sendDigest();
   }).catch(err => console.error('Digest tick error:', err));
 }
 
@@ -745,7 +809,7 @@ app.get('*', (req, res) => {
 initDB().then(() => {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Funded Tracker running on port ${PORT}`);
-    console.log(`AI: ${AI_ENABLED ? 'enabled' : 'disabled (set ANTHROPIC_API_KEY)'} · Digest: ${DIGEST_ENABLED ? 'enabled' : 'disabled (set RESEND_API_KEY)'}`);
+    console.log(`AI: ${AI_ENABLED ? 'enabled' : 'disabled (set ANTHROPIC_API_KEY)'} · Email digest: ${EMAIL_ENABLED ? 'enabled' : 'off'} · Discord digest: configured in Settings`);
   });
   // Sheet re-sync every 30 min (only does work once a sheet is configured)
   setTimeout(() => { syncSheet().catch(() => {}); }, 10_000);

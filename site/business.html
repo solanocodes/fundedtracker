@@ -397,9 +397,13 @@ input[type=number]{-moz-appearance:textfield}input[type=number]::-webkit-inner-s
             <div class="set-field"><label class="set-label">recurringCash col</label><input class="set-input" id="setRecurCol" placeholder="M" maxlength="3"></div>
           </div>
           <div class="set-field"><label class="set-label">Annual revenue target ($)</label><input class="set-input" type="number" id="setTarget" placeholder="900000" min="0"></div>
+          <div class="set-field full">
+            <label class="set-label">Discord webhook (Monday digest posts here)</label>
+            <input class="set-input" id="setDiscord" placeholder="https://discord.com/api/webhooks/…">
+          </div>
           <div class="set-actions">
             <button class="set-btn" onclick="saveSettings()">Save &amp; sync now</button>
-            <button class="set-btn ghost" onclick="sendTestDigest()">Send test digest email</button>
+            <button class="set-btn ghost" onclick="sendTestDigest()">Send test digest</button>
             <span class="set-status" id="setStatus"></span>
           </div>
         </div>
@@ -1027,14 +1031,15 @@ async function openSettings(){
     document.getElementById('setDateCol').value=c.dateCol||'A';
     document.getElementById('setCashCol').value=c.cashCol||'L';
     document.getElementById('setRecurCol').value=c.recurCol||'M';
-    document.getElementById('setStartMonth').value=c.startMonth||mkey(new Date().getMonth()+1,new Date().getFullYear());
+    document.getElementById('setStartMonth').value=c.startMonth||(new Date().getFullYear()+'-01');
+    document.getElementById('setDiscord').value=s.discordWebhook||'';
     document.getElementById('chipAI').textContent='AI '+(s.aiEnabled?'on':'off');
     document.getElementById('chipAI').className='status-chip '+(s.aiEnabled?'on':'off');
-    document.getElementById('chipDigest').textContent='Email '+(s.digestEnabled?'on':'off');
+    document.getElementById('chipDigest').textContent='Digest '+(s.digestEnabled?'on':'off');
     document.getElementById('chipDigest').className='status-chip '+(s.digestEnabled?'on':'off');
     const st=document.getElementById('setStatus');
     if(s.sheetError){st.className='set-status err';st.textContent='Last sync: '+s.sheetError}
-    else if(s.sheetLastSync){st.className='set-status ok';st.textContent='Synced '+s.sheetRows+' rows · '+new Date(s.sheetLastSync).toLocaleString()}
+    else if(s.sheetLastSync){st.className='set-status ok';st.textContent='Synced '+s.sheetRows+' rows'+(s.sheetCols?' (date col '+s.sheetCols.date+')':'')+' · '+new Date(s.sheetLastSync).toLocaleString()}
     else{st.className='set-status';st.textContent=''}
   }catch(e){console.error('Settings load error:',e)}
 }
@@ -1043,14 +1048,17 @@ async function saveSettings(){
   const st=document.getElementById('setStatus');
   st.className='set-status';st.textContent='Saving…';
   const url=document.getElementById('setSheetUrl').value.trim();
-  const payload={annualTarget:parseFloat(document.getElementById('setTarget').value)||900000};
+  const payload={
+    annualTarget:parseFloat(document.getElementById('setTarget').value)||900000,
+    discordWebhook:document.getElementById('setDiscord').value.trim()
+  };
   payload.sheetCfg=url?{
     url,
     tab:document.getElementById('setSheetTab').value.trim(),
     dateCol:document.getElementById('setDateCol').value.trim()||'A',
     cashCol:document.getElementById('setCashCol').value.trim()||'L',
     recurCol:document.getElementById('setRecurCol').value.trim()||'M',
-    startMonth:document.getElementById('setStartMonth').value||mkey(new Date().getMonth()+1,new Date().getFullYear())
+    startMonth:document.getElementById('setStartMonth').value||(new Date().getFullYear()+'-01')
   }:null;
   try{
     await api('POST','/api/settings',payload);
@@ -1058,13 +1066,15 @@ async function saveSettings(){
       st.textContent='Syncing sheet…';
       const r=await api('POST','/api/sheet/sync',{});
       if(r.error){st.className='set-status err';st.textContent=r.error}
-      else{st.className='set-status ok';st.textContent='✓ Synced '+r.rows+' rows across '+Object.keys(r.data||{}).length+' months'}
+      else{st.className='set-status ok';st.textContent='✓ Synced '+r.rows+' rows across '+Object.keys(r.data||{}).length+' months'+(r.cols?' (date col '+r.cols.date+')':'')}
     }else{
       st.className='set-status ok';st.textContent='✓ Saved';
     }
     await loadAll();
   }catch(e){
-    st.className='set-status err';st.textContent='Save failed';
+    let msg='Save failed';
+    try{const j=JSON.parse(e.message);if(j.error)msg=j.error}catch(_){}
+    st.className='set-status err';st.textContent=msg;
   }
 }
 async function sendTestDigest(){
@@ -1073,7 +1083,7 @@ async function sendTestDigest(){
   try{
     const r=await api('POST','/api/digest/test',{});
     if(r.error){st.className='set-status err';st.textContent=r.error}
-    else{st.className='set-status ok';st.textContent='✓ Digest sent — check your inbox'}
+    else{st.className='set-status ok';st.textContent='✓ Digest sent via '+(r.channels||[]).join(' + ')}
   }catch(e){
     let msg='Digest failed';
     try{const j=JSON.parse(e.message);if(j.error)msg=j.error}catch(_){}
