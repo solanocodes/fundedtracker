@@ -78,6 +78,15 @@ async function initDB() {
         notes TEXT
       )
     `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS commissions (
+        id TEXT PRIMARY KEY,
+        amount NUMERIC NOT NULL,
+        date TEXT,
+        source TEXT,
+        notes TEXT
+      )
+    `);
     // Business tracker: store monthly data as JSON keyed by YYYY-MM
     await client.query(`
       CREATE TABLE IF NOT EXISTS business_months (
@@ -149,15 +158,17 @@ app.get('/api/check', (req, res) => {
 // ── Data routes ──
 app.get('/api/data', authMiddleware, async (req, res) => {
   try {
-    const [payouts, expenses, accounts] = await Promise.all([
+    const [payouts, expenses, accounts, commissions] = await Promise.all([
       pool.query('SELECT id, amount::float, date, firm, account, notes FROM payouts ORDER BY date DESC'),
       pool.query('SELECT id, amount::float, date, type, firm, notes FROM expenses ORDER BY date DESC'),
-      pool.query('SELECT id, name, firm, size, status, start_date AS "startDate", notes FROM accounts ORDER BY name')
+      pool.query('SELECT id, name, firm, size, status, start_date AS "startDate", notes FROM accounts ORDER BY name'),
+      pool.query('SELECT id, amount::float, date, source, notes FROM commissions ORDER BY date DESC')
     ]);
     res.json({
       payouts: payouts.rows,
       expenses: expenses.rows,
-      accounts: accounts.rows
+      accounts: accounts.rows,
+      commissions: commissions.rows
     });
   } catch (err) {
     console.error('GET /api/data error:', err);
@@ -215,6 +226,31 @@ app.delete('/api/expenses/:id', authMiddleware, async (req, res) => {
   }
 });
 
+// Commissions
+app.post('/api/commissions', authMiddleware, async (req, res) => {
+  const { id, amount, date, source, notes } = req.body;
+  try {
+    await pool.query(
+      'INSERT INTO commissions (id, amount, date, source, notes) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (id) DO UPDATE SET amount=$2, date=$3, source=$4, notes=$5',
+      [id, amount, date, source, notes]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('POST /api/commissions error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.delete('/api/commissions/:id', authMiddleware, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM commissions WHERE id=$1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('DELETE /api/commissions error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
 // Accounts
 app.post('/api/accounts', authMiddleware, async (req, res) => {
   const { id, name, firm, size, status, startDate, notes } = req.body;
@@ -242,13 +278,14 @@ app.delete('/api/accounts/:id', authMiddleware, async (req, res) => {
 
 // Import (replace all)
 app.post('/api/import', authMiddleware, async (req, res) => {
-  const { payouts, expenses, accounts } = req.body;
+  const { payouts, expenses, accounts, commissions } = req.body;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     await client.query('DELETE FROM payouts');
     await client.query('DELETE FROM expenses');
     await client.query('DELETE FROM accounts');
+    await client.query('DELETE FROM commissions');
     for (const p of (payouts || [])) {
       await client.query('INSERT INTO payouts (id,amount,date,firm,account,notes) VALUES ($1,$2,$3,$4,$5,$6)', [p.id, p.amount, p.date, p.firm, p.account, p.notes]);
     }
@@ -257,6 +294,9 @@ app.post('/api/import', authMiddleware, async (req, res) => {
     }
     for (const a of (accounts || [])) {
       await client.query('INSERT INTO accounts (id,name,firm,size,status,start_date,notes) VALUES ($1,$2,$3,$4,$5,$6,$7)', [a.id, a.name, a.firm, a.size, a.status, a.startDate, a.notes]);
+    }
+    for (const c of (commissions || [])) {
+      await client.query('INSERT INTO commissions (id,amount,date,source,notes) VALUES ($1,$2,$3,$4,$5)', [c.id, c.amount, c.date, c.source, c.notes]);
     }
     await client.query('COMMIT');
     res.json({ ok: true });
@@ -272,12 +312,13 @@ app.post('/api/import', authMiddleware, async (req, res) => {
 // Export
 app.get('/api/export', authMiddleware, async (req, res) => {
   try {
-    const [payouts, expenses, accounts] = await Promise.all([
+    const [payouts, expenses, accounts, commissions] = await Promise.all([
       pool.query('SELECT id, amount::float, date, firm, account, notes FROM payouts'),
       pool.query('SELECT id, amount::float, date, type, firm, notes FROM expenses'),
-      pool.query('SELECT id, name, firm, size, status, start_date AS "startDate", notes FROM accounts')
+      pool.query('SELECT id, name, firm, size, status, start_date AS "startDate", notes FROM accounts'),
+      pool.query('SELECT id, amount::float, date, source, notes FROM commissions')
     ]);
-    res.json({ payouts: payouts.rows, expenses: expenses.rows, accounts: accounts.rows });
+    res.json({ payouts: payouts.rows, expenses: expenses.rows, accounts: accounts.rows, commissions: commissions.rows });
   } catch (err) {
     console.error('GET /api/export error:', err);
     res.status(500).json({ error: 'Export failed' });
@@ -287,10 +328,17 @@ app.get('/api/export', authMiddleware, async (req, res) => {
 // ── Business Tracker routes ──
 app.get('/api/business/data', authMiddleware, async (req, res) => {
   try {
-    const result = await pool.query('SELECT key, data FROM business_months ORDER BY key');
+    const [monthsRes, payoutsSync, commissionsSync] = await Promise.all([
+      pool.query('SELECT key, data FROM business_months ORDER BY key'),
+      pool.query("SELECT substr(date,1,7) AS ym, SUM(amount)::float AS total FROM payouts WHERE date IS NOT NULL AND date <> '' GROUP BY ym"),
+      pool.query("SELECT substr(date,1,7) AS ym, SUM(amount)::float AS total FROM commissions WHERE date IS NOT NULL AND date <> '' GROUP BY ym")
+    ]);
     const months = {};
-    result.rows.forEach(r => { months[r.key] = r.data; });
-    res.json({ months });
+    monthsRes.rows.forEach(r => { months[r.key] = r.data; });
+    const sync = {};
+    payoutsSync.rows.forEach(r => { if (!sync[r.ym]) sync[r.ym] = { payouts: 0, commissions: 0 }; sync[r.ym].payouts = r.total; });
+    commissionsSync.rows.forEach(r => { if (!sync[r.ym]) sync[r.ym] = { payouts: 0, commissions: 0 }; sync[r.ym].commissions = r.total; });
+    res.json({ months, sync });
   } catch (err) {
     console.error('GET /api/business/data error:', err);
     res.status(500).json({ error: 'Database error' });

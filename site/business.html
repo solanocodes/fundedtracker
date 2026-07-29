@@ -136,7 +136,7 @@ body{background:var(--bg);color:var(--t);font-family:var(--sans);font-size:14px;
 .add-row-btn:hover{color:var(--accent);background:rgba(200,169,110,0.04)}
 
 /* ═══ REVENUE GRID ═══ */
-.revenue-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--glass-brd)}
+.revenue-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1px;background:var(--glass-brd)}
 .rev-cell{background:var(--glass-bg);padding:14px 18px;transition:all 0.15s;position:relative;overflow:hidden}
 .rev-cell:hover{background:rgba(255,255,255,0.02)}
 .rev-cell::after{
@@ -145,10 +145,15 @@ body{background:var(--bg);color:var(--t);font-family:var(--sans);font-size:14px;
   pointer-events:none;opacity:0;transition:opacity .3s;
 }
 .rev-cell:hover::after{opacity:1}
-.rev-cell-label{font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--t3);font-weight:600;margin-bottom:8px}
+.rev-cell-label{font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--t3);font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.rev-auto-badge{display:inline-flex;align-items:center;gap:3px;padding:1px 6px;border-radius:4px;background:rgba(200,169,110,0.1);color:var(--accent);font-size:8px;letter-spacing:0.06em;border:1px solid rgba(200,169,110,0.2)}
 .rev-prefix{font-family:var(--serif);font-size:18px;color:var(--t3)}
 .rev-input{background:none;border:none;outline:none;font-family:var(--serif);font-size:22px;color:var(--green);width:100%;letter-spacing:-0.02em}
 .rev-input::placeholder{color:var(--bg4)}.rev-input:focus{color:var(--t)}
+.rev-input.auto{color:var(--accent);cursor:default}
+.rev-auto-sub{font-size:10px;color:var(--t3);margin-top:4px;letter-spacing:0.04em}
+
+@media(max-width:900px){.revenue-grid{grid-template-columns:1fr 1fr}}
 
 /* ═══ 21st.dev: CHART PANEL ═══ */
 .chart-panel{
@@ -406,8 +411,9 @@ input[type=number]{-moz-appearance:textfield}input[type=number]::-webkit-inner-s
       <div class="revenue-grid">
         <div class="rev-cell"><div class="rev-cell-label">Mentorship / coaching</div><div style="display:flex;align-items:center;gap:4px"><span class="rev-prefix">$</span><input class="rev-input" type="number" id="rev1" placeholder="0" min="0" oninput="onInput()"></div></div>
         <div class="rev-cell"><div class="rev-cell-label">YouTube / sponsorships</div><div style="display:flex;align-items:center;gap:4px"><span class="rev-prefix">$</span><input class="rev-input" type="number" id="rev2" placeholder="0" min="0" oninput="onInput()"></div></div>
-        <div class="rev-cell"><div class="rev-cell-label">Affiliate marketing</div><div style="display:flex;align-items:center;gap:4px"><span class="rev-prefix">$</span><input class="rev-input" type="number" id="rev3" placeholder="0" min="0" oninput="onInput()"></div></div>
         <div class="rev-cell"><div class="rev-cell-label">Other income</div><div style="display:flex;align-items:center;gap:4px"><span class="rev-prefix">$</span><input class="rev-input" type="number" id="rev4" placeholder="0" min="0" oninput="onInput()"></div></div>
+        <div class="rev-cell"><div class="rev-cell-label">Affiliate marketing <span class="rev-auto-badge">🔗 auto</span></div><div style="display:flex;align-items:center;gap:4px"><span class="rev-prefix">$</span><input class="rev-input auto" type="text" id="revAutoCommission" value="0" readonly></div><div class="rev-auto-sub">from funded tracker commissions</div></div>
+        <div class="rev-cell"><div class="rev-cell-label">Prop firm payouts <span class="rev-auto-badge">🔗 auto</span></div><div style="display:flex;align-items:center;gap:4px"><span class="rev-prefix">$</span><input class="rev-input auto" type="text" id="revAutoPayout" value="0" readonly></div><div class="rev-auto-sub">from funded tracker payouts</div></div>
       </div>
     </div>
 
@@ -454,7 +460,9 @@ const MONTHS_LONG=['January','February','March','April','May','June','July','Aug
 const MONTHS_SHORT=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const now=new Date();let curM=now.getMonth()+1,curY=now.getFullYear();
 try{const saved=localStorage.getItem('soa.business.curMonth');if(saved){const [sy,sm]=saved.split('-').map(Number);if(sy>=2000&&sm>=1&&sm<=12){curM=sm;curY=sy}}}catch(e){}
-let cache={},histChart=null,saveTimeout=null,saveState='idle',savedStateTimer=null;
+let cache={},syncData={},histChart=null,saveTimeout=null,saveState='idle',savedStateTimer=null;
+function autoCommission(m,y){const k=mkey(m,y);return(syncData[k]&&syncData[k].commissions)||0}
+function autoPayout(m,y){const k=mkey(m,y);return(syncData[k]&&syncData[k].payouts)||0}
 function mkey(m,y){return y+'-'+String(m).padStart(2,'0')}
 function mlabel(m,y){return MONTHS_SHORT[m-1]+' '+y}
 
@@ -491,7 +499,9 @@ async function doLogin(){
 /* ═══ CLOUD DATA ═══ */
 async function loadAll(){
   try{
-    const data=await api('GET','/api/business/data');cache=data.months||{};
+    const data=await api('GET','/api/business/data');
+    cache=data.months||{};
+    syncData=data.sync||{};
     renderMonth(curM,curY);
     renderDashboard();
   }
@@ -534,7 +544,11 @@ function renderMonth(m,y){
   const k=mkey(m,y),d=cache[k]||{rev:[0,0,0,0],team:dfTeam(),soft:dfSoft()};
   document.getElementById('sidebarMonth').textContent=mlabel(m,y);
   document.getElementById('pageSubtitle').textContent=MONTHS_LONG[m-1]+' '+y+' · Business Profit Tracker';
-  [1,2,3,4].forEach((i,idx)=>{document.getElementById('rev'+i).value=d.rev[idx]||''});
+  document.getElementById('rev1').value=d.rev[0]||'';
+  document.getElementById('rev2').value=d.rev[1]||'';
+  document.getElementById('rev4').value=d.rev[3]||'';
+  document.getElementById('revAutoCommission').value=autoCommission(m,y).toFixed(2);
+  document.getElementById('revAutoPayout').value=autoPayout(m,y).toFixed(2);
   renderTeam(d.team);renderSoft(d.soft);calc();
 }
 function makeRow(type,r){
@@ -556,7 +570,13 @@ function addSoftRow(){const c=document.getElementById('softRows');const r=makeRo
 function snapshot(){
   const k=mkey(curM,curY);
   if(!cache[k])cache[k]={rev:[0,0,0,0],team:[],soft:[]};
-  cache[k].rev=[1,2,3,4].map(i=>parseFloat(document.getElementById('rev'+i).value)||0);
+  const existing=cache[k].rev||[0,0,0,0];
+  cache[k].rev=[
+    parseFloat(document.getElementById('rev1').value)||0,
+    parseFloat(document.getElementById('rev2').value)||0,
+    existing[2]||0, // legacy affiliate slot — preserved but no longer edited (affiliate is now auto)
+    parseFloat(document.getElementById('rev4').value)||0
+  ];
   cache[k].team=[...document.querySelectorAll('.team-row')].map(r=>({name:r.querySelector('.rn').value,role:(r.querySelector('.rt')||{value:''}).value,amount:parseFloat(r.querySelector('.ra').value)||0}));
   cache[k].soft=[...document.querySelectorAll('.soft-row')].map(r=>({name:r.querySelector('.rn').value,amount:parseFloat(r.querySelector('.ra').value)||0}));
 }
@@ -565,7 +585,8 @@ function onInput(){snapshot();calc();setSaveState('dirty');clearTimeout(saveTime
 /* ═══ CALC ═══ */
 function fmt(n){const abs=Math.abs(Math.round(n));const s=abs>=10000?'$'+(abs/1000).toFixed(1)+'k':'$'+abs.toLocaleString();return n<0?'-'+s:s}
 function calc(){
-  const rev=[1,2,3,4].reduce((s,i)=>s+(parseFloat(document.getElementById('rev'+i).value)||0),0);
+  const manualRev=[1,2,4].reduce((s,i)=>s+(parseFloat(document.getElementById('rev'+i).value)||0),0);
+  const rev=manualRev+autoCommission(curM,curY)+autoPayout(curM,curY);
   const tc=[...document.querySelectorAll('.team-row .ra')].reduce((s,el)=>s+(parseFloat(el.value)||0),0);
   const sc=[...document.querySelectorAll('.soft-row .ra')].reduce((s,el)=>s+(parseFloat(el.value)||0),0);
   const exp=tc+sc,profit=rev-exp,roi=exp>0?(profit/exp)*100:null;
@@ -593,7 +614,16 @@ function updateChart(){
   for(let off=11;off>=0;off--){
     let m=curM-off,y=curY;while(m<=0){m+=12;y--}
     const k=mkey(m,y);
-    if(cache[k]){const d=cache[k],rv=d.rev.reduce((s,v)=>s+v,0),tc=d.team.reduce((s,r)=>s+r.amount,0),sc=d.soft.reduce((s,r)=>s+r.amount,0),ex=tc+sc;labels.push(MONTHS_SHORT[m-1]+" '"+String(y).slice(2));revs.push(Math.round(rv));exps.push(Math.round(ex));profits.push(Math.round(rv-ex))}
+    const d=cache[k];const s=syncData[k];
+    if(!d&&!s)continue;
+    const manualRv=d?((d.rev[0]||0)+(d.rev[1]||0)+(d.rev[3]||0)):0;
+    const auto=(s?((s.payouts||0)+(s.commissions||0)):0);
+    const rv=manualRv+auto;
+    const tc=d?d.team.reduce((s,r)=>s+r.amount,0):0;
+    const sc=d?d.soft.reduce((s,r)=>s+r.amount,0):0;
+    const ex=tc+sc;
+    labels.push(MONTHS_SHORT[m-1]+" '"+String(y).slice(2));
+    revs.push(Math.round(rv));exps.push(Math.round(ex));profits.push(Math.round(rv-ex));
   }
   const empty=document.getElementById('chartEmpty'),canvas=document.getElementById('histChart');
   if(labels.length<1){empty.style.display='flex';canvas.style.display='none';if(histChart){histChart.destroy();histChart=null}return}
@@ -663,29 +693,37 @@ function tfRange(){
 
 function aggregateRange(){
   const r=tfRange();
-  const rev=[0,0,0,0];
+  // rev[0]=mentorship, [1]=youtube, [2]=affiliate(auto), [3]=prop payouts(auto), [4]=other
+  const rev=[0,0,0,0,0];
   const teamMap={},softMap={};
   const monthly=[];
-  Object.keys(cache).sort().forEach(k=>{
+  const keys=new Set([...Object.keys(cache),...Object.keys(syncData)]);
+  [...keys].sort().forEach(k=>{
     if(k<r.from||k>r.to)return;
     const d=cache[k];
-    const rArr=d.rev||[0,0,0,0];
-    rArr.forEach((v,i)=>{rev[i]=(rev[i]||0)+(parseFloat(v)||0)});
+    const s=syncData[k]||{payouts:0,commissions:0};
+    const rArr=(d&&d.rev)||[0,0,0,0];
+    const mentor=parseFloat(rArr[0])||0;
+    const youtube=parseFloat(rArr[1])||0;
+    const other=parseFloat(rArr[3])||0;
+    const affiliate=parseFloat(s.commissions)||0;
+    const prop=parseFloat(s.payouts)||0;
+    rev[0]+=mentor;rev[1]+=youtube;rev[2]+=affiliate;rev[3]+=prop;rev[4]+=other;
     let tc=0;
-    (d.team||[]).forEach(row=>{
+    ((d&&d.team)||[]).forEach(row=>{
       const a=parseFloat(row.amount)||0;
       if(a===0&&!row.name)return;
       const name=((row.name||'')+'').trim()||'(unnamed)';
       teamMap[name]=(teamMap[name]||0)+a;tc+=a;
     });
     let sc=0;
-    (d.soft||[]).forEach(row=>{
+    ((d&&d.soft)||[]).forEach(row=>{
       const a=parseFloat(row.amount)||0;
       if(a===0&&!row.name)return;
       const name=((row.name||'')+'').trim()||'(unnamed)';
       softMap[name]=(softMap[name]||0)+a;sc+=a;
     });
-    const rv=rArr.reduce((s,v)=>s+(parseFloat(v)||0),0);
+    const rv=mentor+youtube+affiliate+prop+other;
     monthly.push({key:k,rev:rv,team:tc,soft:sc,exp:tc+sc,profit:rv-tc-sc});
   });
   return{rev,teamMap,softMap,monthly,label:r.label};
@@ -748,7 +786,7 @@ function setBdTab(tab){
 }
 
 function drawBreakdown(agg){
-  const REV_LABELS=['Mentorship / coaching','YouTube / sponsorships','Affiliate marketing','Other income'];
+  const REV_LABELS=['Mentorship / coaching','YouTube / sponsorships','Affiliate marketing 🔗','Prop firm payouts 🔗','Other income'];
   let entries,totalLabel;
   if(curBdTab==='revenue'){entries=REV_LABELS.map((l,i)=>({name:l,value:agg.rev[i]||0}));totalLabel='Total revenue'}
   else if(curBdTab==='team'){entries=Object.entries(agg.teamMap).map(([n,v])=>({name:n,value:v}));totalLabel='Total payroll'}

@@ -384,6 +384,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--t);min-height:100v
       <button class="btn" onclick="exportAll()" data-tip="Download JSON backup">Export</button>
       <button class="btn" onclick="importAll()" data-tip="Restore from backup">Import</button>
       <button class="btn btn-g" onclick="openM('payout')">+ Log Payout</button>
+      <button class="btn btn-g" onclick="openM('commission')">+ Log Commission</button>
       <button class="btn btn-e" onclick="openM('expense')">+ Log Expense</button>
     </div>
   </div>
@@ -447,6 +448,13 @@ body{font-family:var(--sans);background:var(--bg);color:var(--t);min-height:100v
   <div class="fd-r"><div class="fd"><label class="fd-l">Type</label><select class="fd-s" id="eType"><option value="eval">Eval Fee</option><option value="activation">Activation</option><option value="reset">Reset</option><option value="data">Data/Platform</option><option value="other">Other</option></select></div><div class="fd"><label class="fd-l">Prop Firm</label><select class="fd-s" id="eFirm"></select></div></div>
   <div class="fd"><label class="fd-l">Notes</label><input class="fd-i" id="eNotes" placeholder="e.g. 50K eval with code SOA"></div>
   <div class="md-f"><button class="btn" onclick="closeM('expense')">Cancel</button><button class="btn btn-g" onclick="saveExpense()">Save</button></div>
+</div></div>
+
+<div class="ov" id="m-commission"><div class="md"><div class="md-title">Log Commission</div>
+  <div class="fd-r"><div class="fd"><label class="fd-l">Amount ($)</label><input class="fd-i" id="cAmt" type="number" step="0.01" placeholder="e.g. 500"></div><div class="fd"><label class="fd-l">Date</label><input class="fd-i" id="cDate" type="date"></div></div>
+  <div class="fd"><label class="fd-l">Source</label><input class="fd-i" id="cSource" placeholder="e.g. TPT affiliate"></div>
+  <div class="fd"><label class="fd-l">Notes</label><input class="fd-i" id="cNotes" placeholder="Optional..."></div>
+  <div class="md-f"><button class="btn" onclick="closeM('commission')">Cancel</button><button class="btn btn-g" onclick="saveCommission()">Save</button></div>
 </div></div>
 
 <div class="ov" id="m-account"><div class="md"><div class="md-title" id="aMdTitle">Add Account</div>
@@ -529,7 +537,7 @@ async function doLogin(){
 }
 
 /* ═══════════ CLOUD DATA LAYER ═══════════ */
-let D={payouts:[],expenses:[],accounts:[]},chartRange='all',bdTab='firm';
+let D={payouts:[],expenses:[],accounts:[],commissions:[]},chartRange='all',bdTab='firm';
 let globalTf='all',tfFromDate=null,tfToDate=null;
 
 async function loadAndRender(){
@@ -587,13 +595,14 @@ function inTf(dateStr){
 }
 function filteredPayouts(){return D.payouts.filter(p=>inTf(p.date))}
 function filteredExpenses(){return D.expenses.filter(e=>inTf(e.date))}
+function filteredCommissions(){return (D.commissions||[]).filter(c=>inTf(c.date))}
 
 function fillFirms(){['pFirm','eFirm','aFirm'].forEach(id=>{const s=document.getElementById(id);if(!s)return;s.innerHTML=FIRMS.map(f=>`<option value="${f}">${FF[f]}</option>`).join('')})}
 fillFirms();
 
 function switchTab(t,el){document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));document.querySelectorAll('.tc').forEach(x=>x.classList.remove('on'));el.classList.add('on');document.getElementById('tc-'+t).classList.add('on')}
 
-function openM(t){document.getElementById('m-'+t).classList.add('on');const today=new Date().toISOString().slice(0,10);if(t==='payout'){document.getElementById('pDate').value=today;document.getElementById('pAmt').value='';document.getElementById('pAcct').value='';document.getElementById('pNotes').value=''}if(t==='expense'){document.getElementById('eDate').value=today;document.getElementById('eAmt').value='';document.getElementById('eNotes').value=''}if(t==='account'){document.getElementById('aEditId').value='';document.getElementById('aMdTitle').textContent='Add Account';document.getElementById('aDate').value=today;document.getElementById('aName').value='';document.getElementById('aNotes').value=''}}
+function openM(t){document.getElementById('m-'+t).classList.add('on');const today=new Date().toISOString().slice(0,10);if(t==='payout'){document.getElementById('pDate').value=today;document.getElementById('pAmt').value='';document.getElementById('pAcct').value='';document.getElementById('pNotes').value=''}if(t==='expense'){document.getElementById('eDate').value=today;document.getElementById('eAmt').value='';document.getElementById('eNotes').value=''}if(t==='commission'){document.getElementById('cDate').value=today;document.getElementById('cAmt').value='';document.getElementById('cSource').value='TPT affiliate';document.getElementById('cNotes').value=''}if(t==='account'){document.getElementById('aEditId').value='';document.getElementById('aMdTitle').textContent='Add Account';document.getElementById('aDate').value=today;document.getElementById('aName').value='';document.getElementById('aNotes').value=''}}
 function closeM(t){document.getElementById('m-'+t).classList.remove('on')}
 document.querySelectorAll('.ov').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('on')}));
 
@@ -607,6 +616,11 @@ async function saveExpense(){
   const a=Number(document.getElementById('eAmt').value);if(!a)return alert('Enter amount');
   const e={id:uid(),amount:a,date:document.getElementById('eDate').value,type:document.getElementById('eType').value,firm:document.getElementById('eFirm').value,notes:document.getElementById('eNotes').value};
   try{await api('POST','/api/expenses',e);closeM('expense');await loadAndRender()}catch(err){alert('Save failed')}
+}
+async function saveCommission(){
+  const a=Number(document.getElementById('cAmt').value);if(!a)return alert('Enter amount');
+  const c={id:uid(),amount:a,date:document.getElementById('cDate').value,source:document.getElementById('cSource').value||'',notes:document.getElementById('cNotes').value};
+  try{await api('POST','/api/commissions',c);closeM('commission');await loadAndRender()}catch(e){alert('Save failed')}
 }
 async function saveAccount(){
   const eid=document.getElementById('aEditId').value;
@@ -634,7 +648,7 @@ function importAll(){
       try{
         const d=JSON.parse(ev.target.result);
         if(confirm('Replace all data with imported file?')){
-          await api('POST','/api/import',{payouts:d.payouts||[],expenses:d.expenses||[],accounts:d.accounts||[]});
+          await api('POST','/api/import',{payouts:d.payouts||[],expenses:d.expenses||[],accounts:d.accounts||[],commissions:d.commissions||[]});
           await loadAndRender();
         }
       }catch{alert('Import failed')}
@@ -647,15 +661,16 @@ function importAll(){
 /* ═══════════ RENDER ═══════════ */
 
 function renderStats(){
-  const fp=filteredPayouts(),fe=filteredExpenses();
-  const tp=fp.reduce((s,p)=>s+p.amount,0),te=fe.reduce((s,e)=>s+e.amount,0),np=tp-te,roi=te>0?((tp-te)/te*100):0;
-  const ac=D.accounts.filter(a=>a.status!=='blown').length,fc=D.accounts.filter(a=>a.status==='funded').length,ec=D.accounts.filter(a=>a.status==='eval'||a.status==='passed').length;
+  const fp=filteredPayouts(),fe=filteredExpenses(),fc=filteredCommissions();
+  const tp=fp.reduce((s,p)=>s+p.amount,0),te=fe.reduce((s,e)=>s+e.amount,0),tc=fc.reduce((s,c)=>s+c.amount,0);
+  const earned=tp+tc,np=earned-te,roi=te>0?((earned-te)/te*100):0;
+  const ac=D.accounts.filter(a=>a.status!=='blown').length,fcnt=D.accounts.filter(a=>a.status==='funded').length,ec=D.accounts.filter(a=>a.status==='eval'||a.status==='passed').length;
 
   document.getElementById('statCards').innerHTML=`
     <div class="sc spring-up" style="animation-delay:0s">
       <div class="sc-label"><span class="pulse-dot" style="background:var(--g)"></span>Funded <span class="pulse-dot" style="background:var(--bl);margin-left:8px"></span>Eval</div>
       <div class="sc-val">${ac}</div>
-      <div class="sc-sub">${fc} funded · ${ec} eval</div>
+      <div class="sc-sub">${fcnt} funded · ${ec} eval</div>
     </div>
     <div class="sc spring-up" style="animation-delay:.05s">
       <div class="sc-label" style="color:var(--r)">Total spent</div>
@@ -664,8 +679,8 @@ function renderStats(){
     </div>
     <div class="sc spring-up" style="animation-delay:.1s">
       <div class="sc-label" style="color:var(--g)">Total earned</div>
-      <div class="sc-val glow-green" data-counter="${tp}">${fmt(tp)}</div>
-      <div class="sc-sub">Payouts received</div>
+      <div class="sc-val glow-green" data-counter="${earned}">${fmt(earned)}</div>
+      <div class="sc-sub">Payouts ${fmt(tp)} · Commissions ${fmt(tc)}</div>
     </div>
     <div class="sc sc-hero spring-up" style="animation-delay:.15s">
       <div class="sc-label">Net total</div>
@@ -682,9 +697,10 @@ function renderStats(){
 
 /* ═══════════ SVG LINE CHART ═══════════ */
 function renderChart(){
-  const fp=filteredPayouts(),fe=filteredExpenses();
+  const fp=filteredPayouts(),fe=filteredExpenses(),fc=filteredCommissions();
   const events=[];
   fp.forEach(p=>events.push({date:p.date,amt:p.amount}));
+  fc.forEach(c=>events.push({date:c.date,amt:c.amount}));
   fe.forEach(e=>events.push({date:e.date,amt:-e.amount}));
   events.sort((a,b)=>(a.date||'').localeCompare(b.date||''));
   let cum=0,cumIn=0,cumEx=0;
@@ -742,8 +758,8 @@ function renderBreakdown(){
   html+=`</div>`;
 
   let items=[];
-  const fp=filteredPayouts(),fe=filteredExpenses();
-  if(bdTab==='firm'){const m={};fp.forEach(p=>{if(!m[p.firm])m[p.firm]={e:0,s:0};m[p.firm].e+=p.amount});fe.forEach(e=>{if(!m[e.firm])m[e.firm]={e:0,s:0};m[e.firm].s+=e.amount});items=Object.entries(m).map(([k,v],i)=>({name:FF[k]||k,value:v.e-v.s,color:DC[i%DC.length]})).sort((a,b)=>b.value-a.value)}
+  const fp=filteredPayouts(),fe=filteredExpenses(),fcom=filteredCommissions();
+  if(bdTab==='firm'){const m={};fp.forEach(p=>{if(!m[p.firm])m[p.firm]={e:0,s:0};m[p.firm].e+=p.amount});fcom.forEach(c=>{const firm=(c.source||'').toLowerCase().includes('tpt')?'TPT':'Other';if(!m[firm])m[firm]={e:0,s:0};m[firm].e+=c.amount});fe.forEach(e=>{if(!m[e.firm])m[e.firm]={e:0,s:0};m[e.firm].s+=e.amount});items=Object.entries(m).map(([k,v],i)=>({name:FF[k]||k,value:v.e-v.s,color:DC[i%DC.length]})).sort((a,b)=>b.value-a.value)}
   if(bdTab==='size'){const m={};D.accounts.forEach(a=>{const s=fmt(a.size);if(!m[s])m[s]=0;m[s]++});items=Object.entries(m).map(([k,v],i)=>({name:k,value:v,color:DC[i%DC.length]}))}
   if(bdTab==='expenses'){const m={};fe.forEach(e=>{const t=ET[e.type]||e.type;if(!m[t])m[t]=0;m[t]+=e.amount});items=Object.entries(m).map(([k,v],i)=>({name:k,value:v,color:DC[i%DC.length]})).sort((a,b)=>b.value-a.value)}
 
@@ -764,9 +780,10 @@ function renderBreakdown(){
 
 /* ═══════════ MONTHLY ═══════════ */
 function renderMonthly(){
-  const fp=filteredPayouts(),fe=filteredExpenses();
+  const fp=filteredPayouts(),fe=filteredExpenses(),fc=filteredCommissions();
   const all={};
   fp.forEach(p=>{if(!p.date)return;const ym=p.date.slice(0,7);if(!all[ym])all[ym]={p:0,e:0};all[ym].p+=p.amount});
+  fc.forEach(c=>{if(!c.date)return;const ym=c.date.slice(0,7);if(!all[ym])all[ym]={p:0,e:0};all[ym].p+=c.amount});
   fe.forEach(e=>{if(!e.date)return;const ym=e.date.slice(0,7);if(!all[ym])all[ym]={p:0,e:0};all[ym].e+=e.amount});
   const sorted=Object.keys(all).sort((a,b)=>b.localeCompare(a));
   if(!sorted.length){document.getElementById('monthlyList').innerHTML='<div class="empty">Log payouts and expenses to see monthly data</div>';return}
@@ -789,9 +806,18 @@ function renderAccounts(){
 
 /* ═══════════ TRANSACTIONS ═══════════ */
 function renderTx(){
-  const all=[...filteredPayouts().map(p=>({...p,_t:'payout'})),...filteredExpenses().map(e=>({...e,_t:'expense'}))].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-  if(!all.length){document.getElementById('txList').innerHTML='<div class="empty">No transactions yet — log a payout or expense to get started</div>';return}
-  document.getElementById('txList').innerHTML=all.map((t,i)=>`<div class="ti" style="animation-delay:${i*35}ms;border-left:3px solid ${t._t==='payout'?'var(--g)':'var(--r)'}"><div><div style="font-weight:600">${t._t==='payout'?(t.account||t.firm):`${t.firm} — ${ET[t.type]||t.type}`}</div><div style="font-size:11px;color:var(--t3)">${t.notes||''}</div></div><div><div class="ti-lbl">Amount</div><div class="ti-val ${t._t==='payout'?'glow-green':'glow-red'}" style="color:${t._t==='payout'?'var(--g)':'var(--r)'}">${t._t==='payout'?'+':'-'}${fmt(t.amount)}</div></div><div><div class="ti-lbl">Date</div><div class="ti-val">${t.date||'—'}</div></div><div><div class="ti-lbl">Type</div><div class="ti-val">${t._t==='payout'?'Payout':'Expense'}</div></div><button class="btn btn-sm btn-r" onclick="del('${t._t==='payout'?'payouts':'expenses'}','${t.id}')">&#10005;</button></div>`).join('');
+  const all=[
+    ...filteredPayouts().map(p=>({...p,_t:'payout'})),
+    ...filteredCommissions().map(c=>({...c,_t:'commission'})),
+    ...filteredExpenses().map(e=>({...e,_t:'expense'}))
+  ].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  if(!all.length){document.getElementById('txList').innerHTML='<div class="empty">No transactions yet — log a payout, commission, or expense to get started</div>';return}
+  const meta={payout:{color:'var(--g)',glow:'glow-green',sign:'+',label:'Payout',endpoint:'payouts'},commission:{color:'#ffab00',glow:'glow-green',sign:'+',label:'Commission',endpoint:'commissions'},expense:{color:'var(--r)',glow:'glow-red',sign:'-',label:'Expense',endpoint:'expenses'}};
+  document.getElementById('txList').innerHTML=all.map((t,i)=>{
+    const m=meta[t._t];
+    const title=t._t==='payout'?(t.account||t.firm):t._t==='commission'?(t.source||'Commission'):`${t.firm} — ${ET[t.type]||t.type}`;
+    return`<div class="ti" style="animation-delay:${i*35}ms;border-left:3px solid ${m.color}"><div><div style="font-weight:600">${title}</div><div style="font-size:11px;color:var(--t3)">${t.notes||''}</div></div><div><div class="ti-lbl">Amount</div><div class="ti-val ${m.glow}" style="color:${m.color}">${m.sign}${fmt(t.amount)}</div></div><div><div class="ti-lbl">Date</div><div class="ti-val">${t.date||'—'}</div></div><div><div class="ti-lbl">Type</div><div class="ti-val">${m.label}</div></div><button class="btn btn-sm btn-r" onclick="del('${m.endpoint}','${t.id}')">&#10005;</button></div>`;
+  }).join('');
 }
 
 /* ═══════════ INIT: CHECK AUTH THEN LOAD ═══════════ */
