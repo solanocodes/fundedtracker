@@ -748,7 +748,16 @@ function snapshot(){
   cache[k].team=[...document.querySelectorAll('.team-row')].map(r=>({name:r.querySelector('.rn').value,role:(r.querySelector('.rt')||{value:''}).value,amount:parseFloat(r.querySelector('.ra').value)||0}));
   cache[k].soft=[...document.querySelectorAll('.soft-row')].map(r=>({name:r.querySelector('.rn').value,amount:parseFloat(r.querySelector('.ra').value)||0}));
 }
-function onInput(){snapshot();calc();setSaveState('dirty');clearTimeout(saveTimeout);const m=curM,y=curY;saveTimeout=setTimeout(()=>{saveTimeout=null;saveMonth(m,y)},700)}
+// Persistence is scheduled BEFORE any UI recalculation: a rendering error must
+// never be able to block the save (a crash inside calc() previously ate every edit).
+function onInput(){
+  snapshot();
+  setSaveState('dirty');
+  clearTimeout(saveTimeout);
+  const m=curM,y=curY;
+  saveTimeout=setTimeout(()=>{saveTimeout=null;saveMonth(m,y)},700);
+  try{calc()}catch(e){console.error('calc error:',e)}
+}
 
 /* ═══ CALC ═══ */
 function fmt(n){const abs=Math.abs(Math.round(n));const s=abs>=10000?'$'+(abs/1000).toFixed(1)+'k':'$'+abs.toLocaleString();return n<0?'-'+s:s}
@@ -771,8 +780,10 @@ function calc(){
   const bar=document.getElementById('roiBarFill'),pe2=document.getElementById('roiBarPct');
   if(roi!==null){bar.style.width=(Math.min(Math.max(roi,0),600)/6)+'%';bar.className='roi-bar-fill'+(roi>=150?'':roi>=0?' amber':' red');pe2.textContent=Math.round(roi)+'% ROI'}
   else{bar.style.width='0%';pe2.textContent='—'}
-  document.getElementById('teamCount').textContent=(tc2=document.querySelectorAll('.team-row').length)+(tc2===1?' member':' members');
-  document.getElementById('softCount').textContent=(sc2=document.querySelectorAll('.soft-row').length)+(sc2===1?' tool':' tools');
+  const teamN=document.querySelectorAll('.team-row').length;
+  document.getElementById('teamCount').textContent=teamN+(teamN===1?' member':' members');
+  const softN=document.querySelectorAll('.soft-row').length;
+  document.getElementById('softCount').textContent=softN+(softN===1?' tool':' tools');
   updateChart();
 }
 
