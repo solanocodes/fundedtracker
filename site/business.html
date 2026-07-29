@@ -286,6 +286,25 @@ body{background:var(--bg);color:var(--t);font-family:var(--sans);font-size:14px;
 .status-chip.off{color:var(--t3);background:rgba(255,255,255,0.03);border:1px solid var(--brd)}
 @media(max-width:800px){.settings-grid{grid-template-columns:1fr}}
 
+/* ═══ MONTH NAV (monthly-entry header) ═══ */
+.month-nav{display:flex;align-items:center;gap:6px;background:var(--panel);border:1px solid var(--brd);border-radius:var(--rad);padding:8px 10px}
+.month-nav .chevron{background:none;border:none;color:var(--t2);cursor:pointer;font-size:16px;line-height:1;padding:2px 8px;border-radius:6px;transition:all .15s}
+.month-nav .chevron:hover{color:var(--accent-hi);background:rgba(255,255,255,0.04)}
+.month-nav .month-text{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--accent-hi);min-width:92px;text-align:center;font-variant-numeric:tabular-nums}
+
+/* ═══ MOBILE TOP BAR ═══ */
+.mobile-bar{display:none;position:fixed;top:0;left:0;right:0;z-index:100;align-items:center;gap:8px;padding:10px 14px;background:rgba(10,11,16,0.92);backdrop-filter:blur(12px);border-bottom:1px solid var(--brd)}
+.mobile-bar .mb-brand{font-family:var(--display);font-weight:700;font-size:16px;color:var(--t);margin-right:auto}
+.mobile-bar .mb-brand em{font-style:normal;color:var(--accent)}
+.mobile-bar .nav-item{margin-bottom:0;padding:7px 12px;font-size:12px;background:var(--bg3);border:1px solid var(--brd)}
+.mobile-bar .nav-item.active{background:linear-gradient(90deg,rgba(201,169,98,0.14),rgba(201,169,98,0.05));border-color:rgba(201,169,98,0.3)}
+.mobile-bar .nav-item::before{display:none}
+@media(max-width:700px){
+  .mobile-bar{display:flex}
+  .main{padding-top:76px}
+  .page-header{flex-direction:column;align-items:flex-start;gap:12px}
+}
+
 /* ═══ SCROLLBAR / MISC ═══ */
 ::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.07);border-radius:3px}::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,0.13)}
 input[type=number]{-moz-appearance:textfield}input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none}
@@ -297,6 +316,14 @@ input[type=number]{-moz-appearance:textfield}input[type=number]::-webkit-inner-s
 <body>
 
 <div class="backdrop"></div>
+
+<!-- Mobile top bar (sidebar is hidden on small screens) -->
+<div class="mobile-bar">
+  <span class="mb-brand">SOA<em>.</em></span>
+  <div class="nav-item active" data-view="dashboard" onclick="switchView('dashboard')">Dashboard</div>
+  <div class="nav-item" data-view="monthly" onclick="switchView('monthly')">Monthly</div>
+  <div class="nav-item" onclick="openSettings()" title="Settings">⚙</div>
+</div>
 
 <!-- Login -->
 <div class="login-ov" id="loginScreen">
@@ -542,6 +569,11 @@ input[type=number]{-moz-appearance:textfield}input[type=number]::-webkit-inner-s
         <div class="page-title">Monthly Entry</div>
         <div class="page-subtitle"><span id="pageSubtitle">—</span><span class="save-status" id="saveStatus"></span></div>
       </div>
+      <div class="month-nav">
+        <button class="chevron" onclick="changeMonth(-1)" title="Previous month">&#8592;</button>
+        <span class="month-text" id="headerMonth">—</span>
+        <button class="chevron" onclick="changeMonth(1)" title="Next month">&#8594;</button>
+      </div>
     </div>
 
     <div class="kpi-strip">
@@ -710,6 +742,7 @@ function dfSoft(){return [{name:'YouTube tools',amount:0},{name:'CRM / sales',am
 function renderMonth(m,y){
   const k=mkey(m,y),d=cache[k]||{rev:[0,0,0,0],team:dfTeam(),soft:dfSoft()};
   document.getElementById('sidebarMonth').textContent=mlabel(m,y);
+  document.getElementById('headerMonth').textContent=mlabel(m,y);
   document.getElementById('pageSubtitle').textContent=(MONTHS_LONG[m-1]+' '+y).toUpperCase();
   const r1=document.getElementById('rev1');
   if(autoMentorship(k)){
