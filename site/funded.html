@@ -540,11 +540,34 @@ async function doLogin(){
 let D={payouts:[],expenses:[],accounts:[],commissions:[]},chartRange='all',bdTab='firm';
 let globalTf='all',tfFromDate=null,tfToDate=null;
 
+function showLoadError(msg){
+  let el=document.getElementById('loadErrBanner');
+  if(!el){
+    el=document.createElement('div');
+    el.id='loadErrBanner';
+    el.style.cssText='margin:0 0 16px;padding:12px 16px;border-radius:10px;background:rgba(255,61,87,0.08);border:1px solid rgba(255,61,87,0.35);color:#ff8fa0;font-size:13px;line-height:1.5';
+    const app=document.querySelector('.app');
+    app.insertBefore(el,app.firstChild);
+  }
+  el.innerHTML='<b>Could not load your data.</b> '+msg+
+    ' &nbsp;<button onclick="loadAndRender()" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);color:#fff;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:12px">Retry</button>';
+  el.style.display='block';
+}
+function clearLoadError(){const el=document.getElementById('loadErrBanner');if(el)el.style.display='none'}
+
 async function loadAndRender(){
   try{
-    D=await api('GET','/api/data');
+    const d=await api('GET','/api/data');
+    D={payouts:d.payouts||[],expenses:d.expenses||[],accounts:d.accounts||[],commissions:d.commissions||[]};
+    if(d.errors&&d.errors.length)showLoadError('Some tables failed to read: '+d.errors.join('; '));
+    else clearLoadError();
     renderAll();
-  }catch(e){console.error('Load error:',e)}
+  }catch(e){
+    console.error('Load error:',e);
+    let msg=e.message||'Unknown error.';
+    try{const j=JSON.parse(msg);if(j.error)msg=j.error}catch(_){}
+    showLoadError(msg+' Your data is still stored — this is a loading problem.');
+  }
 }
 function renderAll(){renderStats();renderChart();renderBreakdown();renderMonthly();renderAccounts();renderTx()}
 

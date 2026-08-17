@@ -179,24 +179,58 @@ app.get('/api/check', (req, res) => {
 });
 
 // ── Data routes ──
-app.get('/api/data', authMiddleware, async (req, res) => {
+
+// Run one read independently of the others. A failure in a single table must never
+// blank out the whole dashboard, and a missing table repairs itself via initDB.
+async function safeRead(label, sql) {
   try {
-    const [payouts, expenses, accounts, commissions] = await Promise.all([
-      pool.query('SELECT id, amount::float, date, firm, account, notes FROM payouts ORDER BY date DESC'),
-      pool.query('SELECT id, amount::float, date, type, firm, notes FROM expenses ORDER BY date DESC'),
-      pool.query('SELECT id, name, firm, size, status, start_date AS "startDate", notes FROM accounts ORDER BY name'),
-      pool.query('SELECT id, amount::float, date, source, notes FROM commissions ORDER BY date DESC')
-    ]);
-    res.json({
-      payouts: payouts.rows,
-      expenses: expenses.rows,
-      accounts: accounts.rows,
-      commissions: commissions.rows
-    });
+    return { rows: (await pool.query(sql)).rows };
   } catch (err) {
-    console.error('GET /api/data error:', err);
-    res.status(500).json({ error: 'Database error' });
+    if (err.code === '42P01') { // undefined_table
+      console.warn(`Table for "${label}" missing — running initDB to repair`);
+      try {
+        await initDB();
+        return { rows: (await pool.query(sql)).rows, repaired: true };
+      } catch (retryErr) {
+        console.error(`Repair failed for "${label}":`, retryErr.message);
+        return { rows: [], error: `${label}: ${retryErr.message}` };
+      }
+    }
+    console.error(`Read failed for "${label}":`, err.message);
+    return { rows: [], error: `${label}: ${err.message}` };
   }
+}
+
+app.get('/api/data', authMiddleware, async (req, res) => {
+  const [payouts, expenses, accounts, commissions] = await Promise.all([
+    safeRead('payouts', 'SELECT id, amount::float, date, firm, account, notes FROM payouts ORDER BY date DESC'),
+    safeRead('expenses', 'SELECT id, amount::float, date, type, firm, notes FROM expenses ORDER BY date DESC'),
+    safeRead('accounts', 'SELECT id, name, firm, size, status, start_date AS "startDate", notes FROM accounts ORDER BY name'),
+    safeRead('commissions', 'SELECT id, amount::float, date, source, notes FROM commissions ORDER BY date DESC')
+  ]);
+  const errors = [payouts, expenses, accounts, commissions].map(r => r.error).filter(Boolean);
+  res.json({
+    payouts: payouts.rows,
+    expenses: expenses.rows,
+    accounts: accounts.rows,
+    commissions: commissions.rows,
+    errors: errors.length ? errors : undefined
+  });
+});
+
+// Diagnostics: per-table reachability and row counts.
+app.get('/api/health', authMiddleware, async (req, res) => {
+  const TABLES = ['payouts', 'expenses', 'accounts', 'commissions', 'business_months', 'settings'];
+  const tables = {};
+  for (const t of TABLES) {
+    try {
+      const r = await pool.query(`SELECT COUNT(*)::int AS n FROM ${t}`); // fixed identifiers, not user input
+      tables[t] = { ok: true, rows: r.rows[0].n };
+    } catch (err) {
+      tables[t] = { ok: false, error: err.message };
+    }
+  }
+  res.json({ databaseConfigured: !!process.env.DATABASE_URL, tables });
 });
 
 // Payouts
@@ -518,9 +552,9 @@ async function syncSheet() {
 // [2]=legacy affiliate (ignored), [3]=other. Affiliate/prop payouts come from funded-tracker sync.
 async function loadBusinessState() {
   const [monthsRes, payoutsSync, commissionsSync, sheetCfg, closerSync, annualTarget] = await Promise.all([
-    pool.query('SELECT key, data FROM business_months ORDER BY key'),
-    pool.query("SELECT substr(date,1,7) AS ym, SUM(amount)::float AS total FROM payouts WHERE date IS NOT NULL AND date <> '' GROUP BY ym"),
-    pool.query("SELECT substr(date,1,7) AS ym, SUM(amount)::float AS total FROM commissions WHERE date IS NOT NULL AND date <> '' GROUP BY ym"),
+    safeRead('business_months', 'SELECT key, data FROM business_months ORDER BY key'),
+    safeRead('payouts sync', "SELECT substr(date,1,7) AS ym, SUM(amount)::float AS total FROM payouts WHERE date IS NOT NULL AND date <> '' GROUP BY ym"),
+    safeRead('commissions sync', "SELECT substr(date,1,7) AS ym, SUM(amount)::float AS total FROM commissions WHERE date IS NOT NULL AND date <> '' GROUP BY ym"),
     getSetting('sheetCfg'),
     getSetting('closerSync'),
     getSetting('annualTarget')
